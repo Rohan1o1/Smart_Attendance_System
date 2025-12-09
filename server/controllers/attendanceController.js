@@ -220,25 +220,35 @@ const submitAttendance = async (req, res) => {
         // Set face verification to false and continue with other checks
         verificationResults.faceVerified = false;
         
-        // Add suggestions if available
-        if (embeddingResult.suggestions && embeddingResult.suggestions.length > 0) {
-          attendance.addFlag(
-            'face_suggestions',
-            `Suggestions: ${embeddingResult.suggestions.join('; ')}`,
-            'low'
-          );
-        }
+        // Note: Not adding suggestions flag as it's not a valid enum type
+        // The error message is already captured in the face_mismatch flag above
       } else {
         // Face extraction successful, proceed with matching
         console.log('✅ Face extraction successful, proceeding with matching');
         
-        // Compare with registered faces
-        const matchResult = faceRecognitionService.findBestMatch(
+        // Extract actual embedding arrays from stored face embedding objects
+        // Stored format: { embedding: [...], imageUrl: '...', createdAt: '...' }
+        const storedEmbeddingArrays = userWithFaces.faceEmbeddings.map(fe => {
+          // Handle both formats: direct array or object with embedding property
+          if (Array.isArray(fe)) {
+            return fe;
+          } else if (fe.embedding && Array.isArray(fe.embedding)) {
+            return fe.embedding;
+          } else {
+            console.warn('⚠️ Invalid face embedding format:', typeof fe);
+            return null;
+          }
+        }).filter(e => e !== null);
+        
+        console.log(`📊 Found ${storedEmbeddingArrays.length} valid stored embeddings for comparison`);
+        
+        // Compare with registered faces (findBestMatch is async)
+        const matchResult = await faceRecognitionService.findBestMatch(
           embeddingResult.embedding,
-          userWithFaces.faceEmbeddings
+          storedEmbeddingArrays
         );
 
-        console.log(`🔍 Face matching result: similarity=${matchResult.bestSimilarity.toFixed(3)}, isMatch=${matchResult.isMatch}`);
+        console.log(`🔍 Face matching result: similarity=${matchResult.bestSimilarity?.toFixed(3) || 0}, isMatch=${matchResult.isMatch}`);
 
         // Save face image (optional - for audit trail)
         attendance.faceVerification.faceImageUrl = `data:image/jpeg;base64,${faceImage}`;
@@ -276,6 +286,28 @@ const submitAttendance = async (req, res) => {
       classObj.attendanceWindow.beforeMinutes,
       classObj.attendanceWindow.afterMinutes
     );
+
+    // CRITICAL: Reject attendance if face verification fails
+    // This ensures only the registered student can mark attendance
+    if (!verificationResults.faceVerified) {
+      console.log('❌ Attendance REJECTED - Face verification failed');
+      return res.status(403).json({
+        success: false,
+        message: 'Face verification failed. Your face does not match the registered face.',
+        verificationResults: {
+          faceVerified: false,
+          locationVerified: verificationResults.locationVerified,
+          timeVerified: verificationResults.timeVerified
+        },
+        suggestions: [
+          'Ensure good lighting on your face',
+          'Look directly at the camera',
+          'Remove any obstructions (glasses, mask, etc.)',
+          'Make sure only your face is visible in the frame',
+          'If problem persists, re-register your face'
+        ]
+      });
+    }
 
     // Determine final status based on verifications
     const allVerified = verificationResults.locationVerified && 

@@ -220,7 +220,8 @@ const attendanceSchema = new mongoose.Schema({
         'multiple_attempts',
         'unusual_time',
         'device_mismatch',
-        'ip_mismatch'
+        'ip_mismatch',
+        'face_liveness_failed'
       ]
     },
     
@@ -474,7 +475,8 @@ attendanceSchema.methods.verifyFace = function(confidence, livenessResult) {
   
   const minimumConfidence = 0.65; // Match the face recognition service threshold
   const faceMatched = confidence >= minimumConfidence;
-  const livenessOk = livenessResult && livenessResult.passed;
+  // Check for isLive property (from production service) or passed property (legacy)
+  const livenessOk = livenessResult && (livenessResult.isLive || livenessResult.passed);
   
   this.faceVerification.isVerified = faceMatched && livenessOk;
   this.verificationResults.faceVerified = this.faceVerification.isVerified;

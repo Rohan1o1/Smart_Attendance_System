@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { UserCheck, MapPin, Camera, Clock, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import WebcamCapture from '../../components/WebcamCapture';
+import AttendanceWebcamCapture from '../../components/AttendanceWebcamCapture';
 import LocationVerification from '../../components/LocationService';
 import { useAuth } from '../../context/AuthContext';
 import { attendanceAPI } from '../../services/api';
@@ -389,12 +389,10 @@ const MarkAttendance = ({ classSession, onSuccess, onCancel }) => {
       )}
 
       {/* Webcam Modal */}
-      <WebcamCapture
-        showModal={showWebcam}
+      <AttendanceWebcamCapture
+        isOpen={showWebcam}
         onCapture={handleFaceCapture}
         onClose={() => setShowWebcam(false)}
-        captureMode="attendance"
-        minConfidence={0.7}
       />
     </div>
   );

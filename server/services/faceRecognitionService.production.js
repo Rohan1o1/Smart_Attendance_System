@@ -450,8 +450,10 @@ class ProductionFaceRecognitionService {
         };
       }
       
-      const comparisons = storedEmbeddings.map((embedding, index) => {
-        const comparison = this.compareFaces(queryEmbedding, embedding);
+      const comparisons = storedEmbeddings.map((storedData, index) => {
+        // Handle both formats: {embedding: [...]} object or direct array
+        const embeddingArray = storedData.embedding || storedData;
+        const comparison = this.compareFaces(queryEmbedding, embeddingArray);
         return {
           index,
           similarity: comparison.similarity,

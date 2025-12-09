@@ -16,7 +16,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import WebcamCapture from '../../components/WebcamCapture';
+import AttendanceWebcamCapture from '../../components/AttendanceWebcamCapture';
 import { attendanceAPI, classAPI } from '../../services/api';
 
 const MarkAttendance = () => {
@@ -479,7 +479,7 @@ const MarkAttendance = () => {
             </div>
 
             {/* Webcam Capture Component */}
-            <WebcamCapture
+            <AttendanceWebcamCapture
               isOpen={true}
               onCapture={(captureData) => {
                 setFaceData(captureData);
