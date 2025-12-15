@@ -111,6 +111,8 @@ const authenticate = async (req, res, next) => {
     req.user = user;
     req.token = token;
 
+  console.debug(`Auth: user authenticated - id=${user._id} role=${user.role}`);
+
     next();
   } catch (error) {
     console.error('Authentication error:', error.message);
@@ -151,6 +153,9 @@ const authorize = (...allowedRoles) => {
           message: 'Authentication required.'
         });
       }
+
+      // Debug log for role check
+      console.debug(`Authorize: required=${allowedRoles.join(',')} userRole=${req.user.role}`);
 
       // Check if user role is allowed
       if (!allowedRoles.includes(req.user.role)) {

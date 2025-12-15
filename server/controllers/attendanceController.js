@@ -41,22 +41,53 @@ const submitAttendance = async (req, res) => {
       });
     }
 
-    // Find and validate class
+    // Find class (do not require explicit enrollment here so students in the same
+    // department/semester/section can mark attendance when class is active)
     const classObj = await Class.findOne({
       _id: classId,
-      'enrolledStudents.studentId': studentId,
-      'enrolledStudents.status': 'enrolled',
       isActive: true
-    }).populate('teacherId', 'firstName lastName');
+    }).populate('teacherId', 'firstName lastName')
+      .populate('enrolledStudents.studentId', 'firstName lastName studentId');
 
     if (!classObj) {
       return res.status(404).json({
         success: false,
-        message: 'Class not found or you are not enrolled'
+        message: 'Class not found'
       });
     }
 
-    // Check if attendance window is open
+    // Check enrollment or assignment membership
+    const isEnrolled = Array.isArray(classObj.enrolledStudents) && classObj.enrolledStudents.some(es => String(es.studentId?._id || es.studentId) === String(studentId) && es.status === 'enrolled');
+
+    // If not enrolled, allow marking attendance only if the student's academic assignment matches the class
+    let permittedToMark = false;
+    if (isEnrolled) {
+      permittedToMark = true;
+    } else {
+      // Check department/semester/section match
+      const studentDept = student.department;
+      const studentSem = student.semester;
+      const studentSection = student.section;
+
+      const deptMatch = !classObj.department || (studentDept && String(classObj.department) === String(studentDept));
+      const semMatch = !classObj.semester || (studentSem && parseInt(classObj.semester) === parseInt(studentSem));
+      const sectionMatch = !classObj.section || (studentSection && String(classObj.section) === String(studentSection));
+
+      if (deptMatch && semMatch && sectionMatch) {
+        permittedToMark = true;
+      }
+    }
+
+    if (!permittedToMark) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not enrolled in this class or not eligible to mark attendance for it'
+      });
+    }
+
+    // Check if class is active; under 'status-only' policy students may mark
+    // attendance anytime while class.status === 'active'. Use isAttendanceAllowed
+    // to get window info but don't reject solely on timing.
     const attendanceWindowCheck = classObj.isAttendanceAllowed();
     if (!attendanceWindowCheck.allowed) {
       return res.status(400).json({
@@ -106,6 +137,8 @@ const submitAttendance = async (req, res) => {
       className: classObj.subject,
       subjectCode: classObj.subjectCode,
       teacherId: classObj.teacherId._id,
+  isEnrolled: isEnrolled,
+  autoEnrolled: !isEnrolled,
       status: 'present', // Will be updated after verification
       timestamp: new Date(),
       classStartTime: classObj.sessionStartTime,
@@ -744,10 +777,63 @@ const getAttendanceStats = async (req, res) => {
   }
 };
 
+/**
+ * Get attendance statistics scoped to the authenticated teacher
+ * GET /attendance/teacher/stats
+ */
+const getTeacherStats = async (req, res) => {
+  try {
+    const { startDate, endDate, department, semester } = req.query;
+    const teacherId = req.user?._id;
+
+    // Build date filter
+    const dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter.timestamp = {};
+      if (startDate) dateFilter.timestamp.$gte = new Date(startDate);
+      if (endDate) dateFilter.timestamp.$lte = new Date(endDate);
+    }
+
+    const additionalFilters = { teacherId };
+    if (department) additionalFilters.department = department;
+    if (semester) additionalFilters.semester = parseInt(semester);
+
+    const filters = { ...dateFilter, ...additionalFilters, isActive: true };
+
+    const overallStats = await Attendance.getStatistics(filters);
+
+    const dailyTrends = await Attendance.aggregate([
+      { $match: { ...filters, timestamp: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } },
+      { $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+          totalRecords: { $sum: 1 },
+          presentCount: { $sum: { $cond: [{ $eq: ['$status', 'present'] }, 1, 0] } },
+          lateCount: { $sum: { $cond: [{ $eq: ['$status', 'late'] }, 1, 0] } }
+        }
+      },
+      { $sort: { '_id': 1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        overallStatistics: overallStats,
+        dailyTrends,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Get teacher stats error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch teacher statistics' });
+  }
+};
+
 module.exports = {
   submitAttendance,
   getStudentAttendance,
   getClassAttendance,
   updateAttendance,
   getAttendanceStats
+  , getTeacherStats
 };

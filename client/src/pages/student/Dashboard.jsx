@@ -3,7 +3,8 @@
  * Main dashboard for student users
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { attendanceAPI, classAPI } from '../../services/api';
 import { 
   Camera, 
   MapPin, 
@@ -21,15 +22,45 @@ const StudentDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   
-  const [attendanceStats] = useState({
-    totalClasses: 24,
-    attendedClasses: 20,
-    percentage: 83.3,
-    thisWeek: {
-      present: 4,
-      total: 5
-    }
+  const [attendanceStats, setAttendanceStats] = useState({
+    totalClasses: 0,
+    attendedClasses: 0,
+    percentage: 0,
+    thisWeek: { present: 0, total: 0 }
   });
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchStats = async () => {
+      try {
+        // attendanceAPI.getStats returns overallStatistics and other metadata
+        const { data } = await attendanceAPI.getStats({ studentId: user?._id });
+        // Try to map the response shape to the local UI model
+        const overall = data?.overallStatistics || {};
+        const thisWeek = data?.dailyTrends ? data.dailyTrends.slice(-7) : [];
+
+        if (!mounted) return;
+
+        setAttendanceStats({
+          totalClasses: overall.totalRecords || 0,
+          attendedClasses: (overall.presentCount || 0) + (overall.lateCount || 0),
+          percentage: overall.attendanceRate ? Math.round(overall.attendanceRate * 10) / 10 : 0,
+          thisWeek: {
+            present: thisWeek.reduce((acc, d) => acc + (d.presentCount || 0), 0),
+            total: thisWeek.reduce((acc, d) => acc + (d.totalRecords || 0), 0)
+          }
+        });
+      } catch (err) {
+        console.error('Failed to fetch student attendance stats', err);
+      } finally {
+        if (mounted) setLoadingStats(false);
+      }
+    };
+
+    fetchStats();
+    return () => { mounted = false; };
+  }, [user]);
 
   const recentClasses = [
     {
@@ -58,33 +89,52 @@ const StudentDashboard = () => {
     }
   ];
 
-  const upcomingClasses = [
-    {
-      id: 1,
-      name: 'Physics 101',
-      teacher: 'Dr. Williams',
-      time: '02:00 PM',
-      room: 'Room 301',
-      canMarkAttendance: true
-    },
-    {
-      id: 2,
-      name: 'Chemistry Lab',
-      teacher: 'Prof. Davis',
-      time: '04:00 PM',
-      room: 'Lab B',
-      canMarkAttendance: false
-    }
-  ];
+  // Real data: enrolled/upcoming classes for the student
+  const [upcomingClasses, setUpcomingClasses] = useState([]);
+  const [upcomingLoading, setUpcomingLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchUpcoming = async () => {
+      try {
+        setUpcomingLoading(true);
+        const res = await classAPI.getEnrolledClasses();
+        if (!mounted) return;
+        if (res && res.success) {
+          const classes = (res.data?.classes || res.data || []).map(c => ({
+            id: c._id || c.id,
+            name: c.subject || c.name,
+            teacher: c.teacherId ? `${c.teacherId.firstName || ''} ${c.teacherId.lastName || ''}`.trim() : (c.teacherName || ''),
+            time: c.schedule?.startTime || c.sessionStartTime ? new Date(c.sessionStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (c.schedule?.startTime || ''),
+            room: c.classroom || '',
+            status: c.status || 'scheduled',
+            canMarkAttendance: String(c.status) === 'active'
+          }));
+
+          setUpcomingClasses(classes);
+        } else {
+          setUpcomingClasses([]);
+        }
+      } catch (err) {
+        console.error('Failed to fetch upcoming classes for student dashboard', err);
+        setUpcomingClasses([]);
+      } finally {
+        if (mounted) setUpcomingLoading(false);
+      }
+    };
+
+    fetchUpcoming();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="p-6 space-y-6">
       {/* Welcome Section */}
-      <div className="bg-gradient-primary rounded-2xl p-6 text-white">
-        <h1 className="text-2xl font-bold mb-2">
+      <div className="bg-gradient-primary rounded-2xl px-6">
+        <h1 className="text-2xl font-bold mb-2 text-black">
           Welcome back, {user?.firstName || 'Student'}! 👋
         </h1>
-        <p className="opacity-90">
+        <p className="opacity-90 text-black">
           Ready to mark your attendance? Your classes are waiting.
         </p>
       </div>
@@ -141,7 +191,7 @@ const StudentDashboard = () => {
               </div>
               <div>
                 <p className="text-sm text-base-content/60">Active Classes</p>
-                <p className="text-2xl font-bold">{upcomingClasses.filter(c => c.canMarkAttendance).length}</p>
+                <p className="text-2xl font-bold">{(upcomingClasses || []).filter(c => c.canMarkAttendance).length}</p>
               </div>
             </div>
           </div>
@@ -159,7 +209,10 @@ const StudentDashboard = () => {
             </h2>
             
             <div className="space-y-4">
-              {upcomingClasses.map((classItem) => (
+              {upcomingLoading ? (
+                <div className="p-4 text-center text-sm text-base-content/60">Loading classes...</div>
+              ) : (
+                (upcomingClasses || []).map((classItem) => (
                 <div 
                   key={classItem.id}
                   className={`p-4 rounded-lg border ${
@@ -192,7 +245,8 @@ const StudentDashboard = () => {
                     )}
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
 
             <button 
@@ -269,7 +323,7 @@ const StudentDashboard = () => {
           </h2>
           
           <div className="overflow-x-auto">
-            <table className="table">
+            <table className="table-auto w-full border-separate" style={{ borderSpacing: '24px 0' }}>
               <thead>
                 <tr>
                   <th>Time</th>

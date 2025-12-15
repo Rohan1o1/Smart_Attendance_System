@@ -14,47 +14,55 @@ import {
   UserCheck
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useState, useEffect } from 'react';
+import { attendanceAPI } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const TeacherDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const stats = [
-    {
-      title: 'Total Classes',
-      value: '6',
-      icon: BookOpen,
-      color: 'text-primary-600 bg-primary-100'
-    },
-    {
-      title: 'Active Students',
-      value: '124',
-      icon: Users,
-      color: 'text-success-600 bg-success-100'
-    },
-    {
-      title: 'Today\'s Attendance',
-      value: '89%',
-      icon: UserCheck,
-      color: 'text-warning-600 bg-warning-100'
-    },
-    {
-      title: 'Classes Today',
-      value: '3',
-      icon: Clock,
-      color: 'text-secondary-600 bg-secondary-100'
-    }
-  ];
+  const [stats, setStats] = useState([
+    { title: 'Total Classes', value: '—', icon: BookOpen, color: 'text-primary-600 bg-primary-100' },
+    { title: 'Active Students', value: '—', icon: Users, color: 'text-success-600 bg-success-100' },
+    { title: "Today's Attendance", value: '—', icon: UserCheck, color: 'text-warning-600 bg-warning-100' },
+    { title: 'Classes Today', value: '—', icon: Clock, color: 'text-secondary-600 bg-secondary-100' }
+  ]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchStats = async () => {
+      try {
+        const { data } = await attendanceAPI.getTeacherStats({ startDate: undefined });
+        const overall = data?.overallStatistics || {};
+        const classesToday = data?.dailyTrends ? data.dailyTrends.filter(d => d._id === new Date().toISOString().split('T')[0]).length : 0;
+
+        if (!mounted) return;
+
+        setStats([
+          { ...stats[0], value: overall.totalRecords || 0 },
+          { ...stats[1], value: overall.activeStudents || (overall.totalRecords ? Math.round((overall.presentCount || 0) / (overall.totalRecords || 1) * 100) + '%' : '—') },
+          { ...stats[2], value: overall.attendanceRate ? (Math.round(overall.attendanceRate * 10) / 10) + '%' : '—' },
+          { ...stats[3], value: classesToday || 0 }
+        ]);
+      } catch (err) {
+        console.error('Failed to fetch teacher dashboard stats', err);
+      }
+    };
+
+    fetchStats();
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
-      <div className="bg-gradient-secondary text-white rounded-lg p-6">
-        <h1 className="text-2xl md:text-3xl font-bold mb-2">
+      <div className="bg-gradient-secondary rounded-lg px-6">
+        <h1 className="text-2xl md:text-3xl font-bold mb-2 text-black">
           Welcome, Prof. {user?.lastName}
         </h1>
-        <p className="opacity-90">
+        <p className="opacity-90 text-black">
           Manage your classes and track student attendance efficiently.
         </p>
       </div>

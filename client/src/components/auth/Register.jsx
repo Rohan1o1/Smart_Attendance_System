@@ -34,11 +34,11 @@ const registerSchema = z.object({
     .min(1, 'Phone number is required')
     .regex(/^[+]?[1-9][\d]{9,14}$/, 'Please enter a valid phone number'),
   studentId: z
-    .string()
-    .min(1, 'Student/Employee ID is required')
-    .min(6, 'ID must be at least 6 characters')
-    .max(12, 'ID must not exceed 12 characters')
-    .regex(/^[A-Z0-9]+$/, 'ID can only contain uppercase letters and numbers'),
+  .string()
+  .min(1, 'College ID is required')
+  .min(6, 'College ID must be at least 6 characters')
+  .max(12, 'College ID must not exceed 12 characters')
+  .regex(/^[A-Z0-9]+$/, 'College ID can only contain uppercase letters and numbers'),
   role: z
     .string()
     .min(1, 'Please select a role'),
@@ -249,14 +249,14 @@ const Register = () => {
 
               <div>
                 <label htmlFor="studentId" className="form-label">
-                  {selectedRole === 'student' ? 'Student ID' : 'Employee ID'}
+                  {selectedRole === 'student' ? 'College ID' : 'Employee ID'}
                 </label>
                 <input
                   {...register('studentId')}
                   type="text"
                   id="studentId"
                   className={`form-input ${errors.studentId ? 'border-error-300' : ''}`}
-                  placeholder={selectedRole === 'student' ? 'STU123456' : 'EMP123456'}
+                  placeholder={selectedRole === 'student' ? 'COL123456' : 'EMP123456'}
                   style={{ textTransform: 'uppercase' }}
                 />
                 {errors.studentId && (

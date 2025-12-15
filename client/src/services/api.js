@@ -6,7 +6,9 @@
 import axios from 'axios';
 
 // API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+// In development use relative '/api' so Vite proxy forwards requests to the backend.
+// In production set VITE_API_BASE_URL to the deployed API URL.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const API_TIMEOUT = 10000; // 10 seconds
 
 /**
@@ -205,6 +207,250 @@ export const authAPI = {
         token,
         password: newPassword
       });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  // ============================
+  // Role-Specific Registration
+  // ============================
+
+  /**
+   * Register Admin (Department Head)
+   * Requires NEW department (no existing admin for that department)
+   */
+  registerAdmin: async (userData) => {
+    try {
+      const response = await apiClient.post('/auth/register/admin', userData);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Register Teacher
+   * Requires EXISTING department (must have an admin)
+   */
+  registerTeacher: async (userData) => {
+    try {
+      const response = await apiClient.post('/auth/register/teacher', userData);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Register Student
+   * Requires EXISTING department, rollNumber required
+   */
+  registerStudent: async (userData) => {
+    try {
+      const response = await apiClient.post('/auth/register/student', userData);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Student Login (using rollNumber)
+   */
+  loginStudent: async (credentials) => {
+    try {
+      const response = await apiClient.post('/auth/login/student', credentials);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get all departments (for registration dropdowns)
+   */
+  getDepartments: async () => {
+    try {
+      const response = await apiClient.get('/auth/departments');
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  }
+};
+
+/**
+ * Admin API endpoints (for Department Admins)
+ */
+export const adminAPI = {
+  /**
+   * Get unverified users in admin's department
+   */
+  getUnverifiedUsers: async () => {
+    try {
+      const response = await apiClient.get('/auth/admin/unverified');
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Verify a user (teacher/student)
+   */
+  verifyUser: async (userId) => {
+    try {
+      const response = await apiClient.put(`/auth/admin/verify/${userId}`);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get all users in department
+   */
+  getDepartmentUsers: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/auth/admin/users', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Assign teacher to year/section
+   */
+  assignTeacher: async (teacherId, data) => {
+    try {
+      const response = await apiClient.put(`/auth/admin/assign-teacher/${teacherId}`, data);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Deactivate user
+   */
+  deactivateUser: async (userId) => {
+    try {
+      const response = await apiClient.put(`/auth/deactivate/${userId}`);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Reactivate user
+   */
+  reactivateUser: async (userId) => {
+    try {
+      const response = await apiClient.put(`/auth/reactivate/${userId}`);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get user statistics
+   */
+  getUserStats: async () => {
+    try {
+      const response = await apiClient.get('/auth/stats');
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  }
+};
+
+// Add reject user endpoint for admin
+adminAPI.rejectUser = async (userId, reason = 'Rejected by admin') => {
+  try {
+    const response = await apiClient.put(`/auth/admin/reject/${userId}`, { reason });
+    return handleResponse(response);
+  } catch (error) {
+    return handleError(error);
+  }
+};
+
+/**
+ * Get list of teachers in the admin's department (for selection in class creation)
+ */
+adminAPI.getTeachers = async (params = {}) => {
+  try {
+    // The backend doesn't have a dedicated /auth/teachers route; reuse admin users endpoint
+    const response = await apiClient.get('/auth/admin/users', { params: { role: 'teacher', ...params } });
+    return handleResponse(response);
+  } catch (error) {
+    return handleError(error);
+  }
+};
+
+/**
+ * SuperAdmin API endpoints
+ */
+export const superAdminAPI = {
+  /**
+   * Get all admins
+   */
+  getAllAdmins: async () => {
+    try {
+      const response = await apiClient.get('/auth/superadmin/admins');
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Create a new admin
+   */
+  createAdmin: async (adminData) => {
+    try {
+      const response = await apiClient.post('/auth/superadmin/create-admin', adminData);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Delete (deactivate) an admin
+   */
+  deleteAdmin: async (adminId) => {
+    try {
+      const response = await apiClient.delete(`/auth/superadmin/admin/${adminId}`);
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get all users across all departments
+   */
+  getAllUsers: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/auth/superadmin/users', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get system statistics
+   */
+  getSystemStats: async () => {
+    try {
+      const response = await apiClient.get('/auth/superadmin/stats');
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -420,11 +666,23 @@ export const faceAPI = {
  */
 export const classAPI = {
   /**
-   * Get all classes
+   * Get classes for the current teacher (or paginated list)
    */
-  getClasses: async (params = {}) => {
+  getMyClasses: async (params = {}) => {
     try {
-      const response = await apiClient.get('/classes', { params });
+      const response = await apiClient.get('/class/my-classes', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get active classes
+   */
+  getActiveClasses: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/class/active', { params });
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -436,7 +694,7 @@ export const classAPI = {
    */
   getClass: async (id) => {
     try {
-      const response = await apiClient.get(`/classes/${id}`);
+      const response = await apiClient.get(`/class/${id}`);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -448,7 +706,7 @@ export const classAPI = {
    */
   createClass: async (classData) => {
     try {
-      const response = await apiClient.post('/classes', classData);
+      const response = await apiClient.post('/class/create', classData);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -460,7 +718,7 @@ export const classAPI = {
    */
   updateClass: async (id, classData) => {
     try {
-      const response = await apiClient.put(`/classes/${id}`, classData);
+      const response = await apiClient.put(`/class/${id}`, classData);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -472,7 +730,7 @@ export const classAPI = {
    */
   deleteClass: async (id) => {
     try {
-      const response = await apiClient.delete(`/classes/${id}`);
+      const response = await apiClient.delete(`/class/${id}`);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -482,9 +740,9 @@ export const classAPI = {
   /**
    * Enroll in class
    */
-  enrollClass: async (classId) => {
+  enrollClass: async (classId, studentIds = []) => {
     try {
-      const response = await apiClient.post(`/classes/${classId}/enroll`);
+      const response = await apiClient.post(`/class/${classId}/enroll`, { studentIds });
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -492,11 +750,11 @@ export const classAPI = {
   },
 
   /**
-   * Start attendance session
+   * Start class session
    */
   startSession: async (classId, sessionData) => {
     try {
-      const response = await apiClient.post(`/classes/${classId}/start-session`, sessionData);
+      const response = await apiClient.post(`/class/${classId}/start`, sessionData);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -508,7 +766,7 @@ export const classAPI = {
    */
   endSession: async (classId) => {
     try {
-      const response = await apiClient.post(`/classes/${classId}/end-session`);
+      const response = await apiClient.post(`/class/${classId}/end`);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -586,6 +844,30 @@ export const attendanceAPI = {
   getAnalytics: async (params = {}) => {
     try {
       const response = await apiClient.get('/attendance/analytics', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get aggregated attendance statistics (admin/teacher/student scoped)
+   */
+  getStats: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/attendance/stats', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get attendance statistics for the authenticated teacher
+   */
+  getTeacherStats: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/attendance/teacher/stats', { params });
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);

@@ -280,13 +280,23 @@ export const AuthProvider = ({ children }) => {
     if (!state.user?.role) return [];
 
     const rolePermissions = {
+      superadmin: [
+        'view_all_users',
+        'manage_users',
+        'manage_admins',
+        'manage_departments',
+        'view_analytics',
+        'manage_system',
+        'export_data'
+      ],
       admin: [
         'view_all_users',
         'manage_users',
         'manage_classes',
         'view_analytics',
         'manage_system',
-        'export_data'
+        'export_data',
+        'verify_users'
       ],
       teacher: [
         'manage_own_classes',
@@ -312,6 +322,16 @@ export const AuthProvider = ({ children }) => {
     return permissions.includes(permission);
   };
 
+  /**
+   * Set auth data directly (for student login with rollNumber)
+   */
+  const setAuthData = (user, accessToken) => {
+    dispatch({
+      type: AUTH_ACTIONS.LOGIN_SUCCESS,
+      payload: { user }
+    });
+  };
+
   // Context value
   const value = {
     // State
@@ -326,6 +346,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateUser,
     clearError,
+    setAuthData,
     
     // Helper functions
     hasRole,

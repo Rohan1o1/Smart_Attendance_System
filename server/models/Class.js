@@ -347,22 +347,20 @@ classSchema.methods.endSession = function() {
 };
 
 // Instance method to check if attendance is allowed
+// Updated: Option 2 behaviour — attendance allowed while class status === 'active'
 classSchema.methods.isAttendanceAllowed = function() {
   if (this.status !== 'active') {
     return { allowed: false, reason: 'Class is not active' };
   }
 
-  const windowTimes = this.attendanceWindowTimes;
-  if (!windowTimes.isOpen) {
-    return { 
-      allowed: false, 
-      reason: 'Attendance window is closed',
-      windowStart: windowTimes.start,
-      windowEnd: windowTimes.end
-    };
-  }
-
-  return { allowed: true, windowEnd: windowTimes.end };
+  // Under Option 2 we treat the session lifecycle (active/completed) as the gate.
+  // Students can mark attendance anytime while status === 'active'.
+  // We still return window info for UI consumption (sessionStartTime/sessionEndTime may be present).
+  return {
+    allowed: true,
+    windowStart: this.sessionStartTime || null,
+    windowEnd: this.sessionEndTime || null
+  };
 };
 
 // Instance method to add student to class

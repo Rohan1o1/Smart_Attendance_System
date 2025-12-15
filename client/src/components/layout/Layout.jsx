@@ -17,7 +17,9 @@ import {
   User,
   BookOpen,
   Clock,
-  UserCheck
+  UserCheck,
+  Shield,
+  Building
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -59,6 +61,16 @@ const Layout = ({ children, userRole }) => {
           { name: 'Attendance', href: '/admin/attendance', icon: UserCheck },
           { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
           { name: 'Settings', href: '/admin/settings', icon: Settings }
+        ];
+      
+      case 'superadmin':
+        return [
+          ...baseItems,
+          { name: 'Departments', href: '/superadmin/admins', icon: Building },
+          { name: 'All Users', href: '/superadmin/users', icon: Users },
+          { name: 'Analytics', href: '/superadmin/analytics', icon: BarChart3 },
+          { name: 'Settings', href: '/superadmin/settings', icon: Settings },
+          { name: 'Profile', href: '/superadmin/profile', icon: User }
         ];
       
       default:

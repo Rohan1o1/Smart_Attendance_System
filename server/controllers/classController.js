@@ -26,13 +26,19 @@ const createClass = async (req, res) => {
       description
     } = req.body;
 
-    const teacherId = req.user._id;
+    // Determine teacher for the class
+    let teacherId = req.user._id;
 
-    // Verify teacher role
-    if (req.user.role !== 'teacher') {
+    // If admin is creating the class, allow specifying teacherId in body
+    if (req.user.role === 'admin' && req.body.teacherId) {
+      teacherId = req.body.teacherId;
+    }
+
+    // Only teachers or admins may create classes
+    if (!['teacher', 'admin'].includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'Only teachers can create classes'
+        message: 'Only teachers or admins can create classes'
       });
     }
 
@@ -161,13 +167,35 @@ const getEnrolledClasses = async (req, res) => {
   try {
     const studentId = req.user._id;
 
-    const classes = await Class.find({
+    // First try to find classes where the student is explicitly enrolled
+    let classes = await Class.find({
       'enrolledStudents.studentId': studentId,
       'enrolledStudents.status': 'enrolled',
       isActive: true
     })
     .populate('teacherId', 'firstName lastName email employeeId')
     .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+
+    // If no enrolled classes found, or the client requested a department/semester/section filter,
+    // return classes that match the student's assignment (department/semester/section).
+    const { department, semester, section } = req.query;
+    const hasFilterParams = !!(department || semester || section);
+
+    if ((classes.length === 0) || hasFilterParams) {
+      const filterDepartment = department || req.user.department;
+      const filterSemester = semester || req.user.semester;
+      const filterSection = section || req.user.section;
+
+      const filterQuery = { isActive: true };
+      if (filterDepartment) filterQuery.department = filterDepartment;
+      if (filterSemester) filterQuery.semester = parseInt(filterSemester);
+      if (filterSection) filterQuery.section = filterSection;
+
+      // Find classes matching the assignment. Note: these are available classes, not necessarily enrolled.
+      classes = await Class.find(filterQuery)
+        .populate('teacherId', 'firstName lastName email employeeId')
+        .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+    }
 
     res.json({
       success: true,
@@ -215,12 +243,16 @@ const startClassSession = async (req, res) => {
     }
 
     // Validate college geofence
+    // Validate college geofence
+    console.debug('StartClassSession: received location for validation:', location);
     const collegeValidation = locationService.validateCollegeGeofence(location);
+    console.debug('StartClassSession: collegeValidation result:', collegeValidation);
     if (!collegeValidation.passed) {
       return res.status(400).json({
         success: false,
         message: 'Teacher must be within college premises to start class',
-        locationError: collegeValidation.message
+        locationError: collegeValidation.message,
+        details: collegeValidation
       });
     }
 

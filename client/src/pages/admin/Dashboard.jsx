@@ -89,7 +89,7 @@ const AdminDashboard = () => {
           <p className="text-secondary-600 mb-4 text-sm">
             Manage students, teachers, and administrators
           </p>
-          <button className="btn btn-primary btn-sm">
+          <button className="btn btn-primary btn-sm" onClick={() => window.location.href = '/admin/users'}>
             Manage Users
           </button>
         </div>

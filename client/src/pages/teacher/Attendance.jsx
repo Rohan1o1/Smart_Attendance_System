@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
+import { classAPI } from '../../services/api';
 
 const TeacherAttendance = () => {
   const { user } = useAuth();
@@ -33,85 +34,46 @@ const TeacherAttendance = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Sample data
-  const classes = [
-    { id: '1', name: 'Computer Science 101', code: 'CS101' },
-    { id: '2', name: 'Chemistry Lab', code: 'CHEM201' },
-    { id: '3', name: 'Data Structures', code: 'CS301' }
-  ];
-
-  const sampleSessions = [
-    {
-      id: '1',
-      classId: '1',
-      className: 'Computer Science 101',
-      classCode: 'CS101',
-      date: '2024-12-08',
-      startTime: '09:00',
-      endTime: '10:30',
-      status: 'completed',
-      location: 'Lab A, Engineering Building',
-      totalStudents: 45,
-      presentStudents: 42,
-      absentStudents: 3,
-      attendanceRate: 93.3,
-      attendees: [
-        { id: '1', name: 'John Doe', studentId: 'CS2024001', timeMarked: '09:05', status: 'present' },
-        { id: '2', name: 'Jane Smith', studentId: 'CS2024002', timeMarked: '09:08', status: 'present' },
-        { id: '3', name: 'Mike Johnson', studentId: 'CS2024003', timeMarked: null, status: 'absent' }
-      ]
-    },
-    {
-      id: '2',
-      classId: '2',
-      className: 'Chemistry Lab',
-      classCode: 'CHEM201',
-      date: '2024-12-08',
-      startTime: '10:00',
-      endTime: '13:00',
-      status: 'active',
-      location: 'Chemistry Lab, Science Building',
-      totalStudents: 32,
-      presentStudents: 28,
-      absentStudents: 4,
-      attendanceRate: 87.5,
-      attendees: [
-        { id: '4', name: 'Sarah Williams', studentId: 'CHEM2024001', timeMarked: '10:15', status: 'present' },
-        { id: '5', name: 'David Brown', studentId: 'CHEM2024002', timeMarked: '10:20', status: 'present' }
-      ]
-    },
-    {
-      id: '3',
-      classId: '1',
-      className: 'Computer Science 101',
-      classCode: 'CS101',
-      date: '2024-12-07',
-      startTime: '09:00',
-      endTime: '10:30',
-      status: 'completed',
-      location: 'Lab A, Engineering Building',
-      totalStudents: 45,
-      presentStudents: 40,
-      absentStudents: 5,
-      attendanceRate: 88.9,
-      attendees: []
-    }
-  ];
+  const [classes, setClasses] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState(null);
 
   useEffect(() => {
-    fetchSessions();
+  fetchSessions();
+  fetchClasses();
   }, []);
 
   const fetchSessions = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSessions(sampleSessions);
-      
-      // Check for active session
-      const active = sampleSessions.find(s => s.status === 'active');
-      setActiveSession(active);
+      // There is not a dedicated 'sessions' endpoint; infer sessions from classes (active/completed)
+      const activeResponse = await classAPI.getActiveClasses();
+      const myResponse = await classAPI.getMyClasses();
+
+      const activeClasses = activeResponse.success ? (activeResponse.data.classes || activeResponse.data || []) : [];
+      const myClasses = myResponse.success ? (myResponse.data.classes || myResponse.data || []) : [];
+
+      // Map classes to a session-like shape for display
+      const mapped = myClasses.map(c => ({
+        id: c._id,
+        classId: c._id,
+        className: c.subject || c.name,
+        classCode: c.subjectCode || c.code,
+        date: c.sessionDate || new Date().toISOString().split('T')[0],
+        startTime: c.sessionStartTime || (c.schedule?.startTime || '00:00'),
+        endTime: c.sessionEndTime || (c.schedule?.endTime || '00:00'),
+        status: (activeClasses.find(ac => String(ac._id) === String(c._id)) ? 'active' : (c.status || 'scheduled')),
+        location: c.classroom || c.teacherLocation?.address || 'TBA',
+        totalStudents: c.statistics?.totalStudents || (c.enrolledStudents?.length || 0),
+        presentStudents: c.statistics?.presentToday || 0,
+        absentStudents: (c.statistics?.totalStudents || c.enrolledStudents?.length || 0) - (c.statistics?.presentToday || 0),
+        attendanceRate: c.statistics?.attendanceRate || 0,
+        attendees: []
+      }));
+
+      setSessions(mapped);
+      const active = mapped.find(s => s.status === 'active');
+      setActiveSession(active || null);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch sessions:', error);
@@ -120,38 +82,117 @@ const TeacherAttendance = () => {
     }
   };
 
+  const fetchClasses = async () => {
+    try {
+      setClassesLoading(true);
+      const response = await classAPI.getMyClasses();
+      if (response.success) {
+        setClasses(response.data.classes || response.data || []);
+      } else {
+        setClasses([]);
+        setClassesError(response.message || 'Failed to load classes');
+      }
+    } catch (err) {
+      console.error('Failed to fetch teacher classes:', err);
+      setClasses([]);
+      setClassesError(err?.message || 'Failed to load classes');
+    } finally {
+      setClassesLoading(false);
+    }
+  };
+
   const startSession = async (classId) => {
     try {
-      const classInfo = classes.find(c => c.id === classId);
+      // Normalize lookup: classes may be an array of objects with either `_id` or `id` and fields like `subject`/`subjectCode` or `name`/`code`.
+      const classInfo = classes.find(c => String(c._id || c.id) === String(classId));
       if (!classInfo) {
         toast.error('Class not found');
         return;
       }
 
-      const newSession = {
-        id: Date.now().toString(),
-        classId,
-        className: classInfo.name,
-        classCode: classInfo.code,
-        date: new Date().toISOString().split('T')[0],
-        startTime: new Date().toLocaleTimeString('en-US', { 
-          hour12: false, 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        }),
-        endTime: null,
-        status: 'active',
-        location: 'Classroom Location',
-        totalStudents: 45,
-        presentStudents: 0,
-        absentStudents: 0,
-        attendanceRate: 0,
-        attendees: []
+      const className = classInfo.subject || classInfo.name || classInfo.className || 'Class';
+      const classCode = classInfo.subjectCode || classInfo.code || classInfo.classCode || '';
+
+      // Acquire geolocation from browser (server requires location)
+      if (!('geolocation' in navigator)) {
+        toast.error('Geolocation is not available in your browser. Location is required to start a session.');
+        return;
+      }
+
+      let position;
+      try {
+        position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, (err) => reject(err), {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          });
+        });
+      } catch (geoErr) {
+        console.error('Geolocation error:', geoErr);
+        if (geoErr.code === 1) {
+          toast.error('Location permission denied. Please allow location access to start a session.');
+        } else if (geoErr.code === 3) {
+          toast.error('Unable to retrieve location (timeout). Try again.');
+        } else {
+          toast.error('Failed to obtain location. Location is required to start a session.');
+        }
+        return;
+      }
+
+      const location = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        timestamp: position.timestamp || new Date().toISOString()
       };
 
-      setSessions(prev => [newSession, ...prev]);
-      setActiveSession(newSession);
-      toast.success(`Attendance session started for ${classInfo.name}`);
+      // Call backend to start session (backend will validate teacher location/permission)
+      try {
+        const resp = await classAPI.startSession(classId, { location });
+        if (!resp || !resp.success) {
+          // Prefer detailed error messages returned by API
+          const message = resp?.message || resp?.errors || 'Failed to start session on server';
+          // If server returned a locationError, show it too
+          if (resp?.locationError) {
+            toast.error(`${message}: ${resp.locationError}`);
+          } else {
+            toast.error(message);
+          }
+          console.error('Start session API error:', resp);
+          return;
+        }
+
+        // Server returns class and attendanceWindow; map to UI session shape
+        const returnedClass = resp.data?.class || resp.data;
+        const attendanceWindow = resp.data?.attendanceWindow || null;
+
+        const serverSession = {
+          id: returnedClass._id || returnedClass.id || Date.now().toString(),
+          classId: returnedClass._id || returnedClass.id,
+          className: returnedClass.subject || returnedClass.name || className,
+          classCode: returnedClass.subjectCode || returnedClass.code || classCode,
+          date: new Date().toISOString().split('T')[0],
+          startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+          endTime: null,
+          status: 'active',
+          location: returnedClass.classroom || returnedClass.teacherLocation?.address || 'Classroom',
+          totalStudents: returnedClass.statistics?.totalStudents || (returnedClass.enrolledStudents?.length || 0),
+          presentStudents: 0,
+          absentStudents: 0,
+          attendanceRate: 0,
+          attendees: [],
+          attendanceWindow
+        };
+
+        setSessions(prev => [serverSession, ...prev.filter(s => s.classId !== serverSession.classId)]);
+        setActiveSession(serverSession);
+        toast.success(`Attendance session started for ${serverSession.className}`);
+
+      } catch (apiErr) {
+        console.error('Start session API error:', apiErr);
+        toast.error(apiErr?.message || 'Failed to start session (server)');
+      }
     } catch (error) {
       console.error('Failed to start session:', error);
       toast.error('Failed to start attendance session');
@@ -342,21 +383,21 @@ const TeacherAttendance = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {classes.map(cls => (
             <button
-              key={cls.id}
-              onClick={() => startSession(cls.id)}
-              disabled={activeSession?.classId === cls.id}
+              key={cls._id || cls.id}
+              onClick={() => startSession(cls._id || cls.id)}
+              disabled={String(activeSession?.classId) === String(cls._id || cls.id)}
               className={`p-4 border rounded-lg text-left transition-colors ${
-                activeSession?.classId === cls.id
+                String(activeSession?.classId) === String(cls._id || cls.id)
                   ? 'border-green-200 bg-green-50 cursor-not-allowed'
                   : 'border-secondary-200 hover:border-primary-300 hover:bg-primary-50'
               }`}
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-medium text-secondary-900">{cls.name}</h4>
-                  <p className="text-sm text-secondary-600">{cls.code}</p>
+                  <h4 className="font-medium text-secondary-900">{cls.subject || cls.name}</h4>
+                  <p className="text-sm text-secondary-600">{cls.subjectCode || cls.code}</p>
                 </div>
-                {activeSession?.classId === cls.id ? (
+                {String(activeSession?.classId) === String(cls._id || cls.id) ? (
                   <span className="text-green-600 text-xs font-medium">Active</span>
                 ) : (
                   <PlayCircle className="w-5 h-5 text-primary-600" />

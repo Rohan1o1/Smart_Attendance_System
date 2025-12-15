@@ -11,7 +11,7 @@ dotenv.config();
 const config = {
   // Server Configuration
   server: {
-    port: process.env.PORT || 5003,
+  port: process.env.PORT || 5002,
     env: process.env.NODE_ENV || 'development',
     host: process.env.HOST || 'localhost'
   },
@@ -42,8 +42,9 @@ const config = {
   // Geolocation Configuration
   geolocation: {
     college: {
-      latitude: parseFloat(process.env.COLLEGE_LATITUDE) || 28.6139,
-      longitude: parseFloat(process.env.COLLEGE_LONGITUDE) || 77.2090,
+      // Default college coordinates updated to provided location
+      latitude: parseFloat(process.env.COLLEGE_LATITUDE) || 22.823147,
+      longitude: parseFloat(process.env.COLLEGE_LONGITUDE) || 88.63941950000002,
       radius: parseInt(process.env.COLLEGE_GEOFENCE_RADIUS) || 200
     },
     teacher: {

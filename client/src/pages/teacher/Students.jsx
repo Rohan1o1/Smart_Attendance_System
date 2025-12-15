@@ -20,6 +20,7 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { classAPI } from '../../services/api';
 import { toast } from 'react-hot-toast';
 
 const TeacherStudents = () => {
@@ -31,12 +32,9 @@ const TeacherStudents = () => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // Sample classes data
-  const classes = [
-    { id: '1', name: 'Computer Science 101', code: 'CS101' },
-    { id: '2', name: 'Chemistry Lab', code: 'CHEM201' },
-    { id: '3', name: 'Data Structures', code: 'CS301' }
-  ];
+  const [classes, setClasses] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState(null);
 
   // Sample students data
   const sampleStudents = [
@@ -123,20 +121,43 @@ const TeacherStudents = () => {
   ];
 
   useEffect(() => {
-    fetchStudents();
+  fetchStudents();
+  fetchClasses();
   }, []);
 
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setStudents(sampleStudents);
+  // TODO: Replace with real API endpoint for fetching students in a class or teacher's students.
+  // For now, keep existing behavior (sample data) until a teacher->students endpoint is added.
+  await new Promise(resolve => setTimeout(resolve, 400));
+  setStudents(sampleStudents);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch students:', error);
       toast.error('Failed to load students');
       setLoading(false);
+    }
+  };
+
+  const fetchClasses = async () => {
+    try {
+      setClassesLoading(true);
+      setClassesError(null);
+      const response = await classAPI.getMyClasses();
+      if (response.success) {
+        const items = response.data.classes || response.data || [];
+        setClasses(items.map(c => ({ id: c._id || c.id, name: c.subject || c.name, code: c.subjectCode || c.code })));
+      } else {
+        setClasses([]);
+        setClassesError(response.message || 'Failed to load classes');
+      }
+    } catch (err) {
+      console.error('Failed to fetch classes for teacher:', err);
+      setClassesError(err?.message || 'Failed to load classes');
+      setClasses([]);
+    } finally {
+      setClassesLoading(false);
     }
   };
 
@@ -250,7 +271,7 @@ const TeacherStudents = () => {
               className="w-full px-3 py-2 border border-secondary-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="all">All Classes</option>
-              {classes.map(cls => (
+              {!classesLoading && classes.map(cls => (
                 <option key={cls.id} value={cls.id}>
                   {cls.code}
                 </option>
@@ -278,6 +299,9 @@ const TeacherStudents = () => {
         <p className="text-sm text-secondary-600">
           Showing {filteredStudents.length} of {students.length} students
         </p>
+        <div className="text-sm text-secondary-500">
+          {classesLoading ? 'Loading classes...' : (classesError ? `Classes: ${classesError}` : `${classes.length} class${classes.length !== 1 ? 'es' : ''}`)}
+        </div>
       </div>
 
       {/* Students Table */}

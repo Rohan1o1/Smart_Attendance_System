@@ -53,6 +53,13 @@ class App {
     this.app.use(securityHeaders);
 
     // CORS handling
+    // Use permissive CORS in development (works well with Vite dev server)
+    if (config.server.env === 'development') {
+      // use the npm 'cors' package to reliably handle preflight requests
+      const cors = require('cors');
+      this.app.use(cors({ origin: true, credentials: true }));
+    }
+    // Custom CORS headers (kept for stricter control in production)
     this.app.use(corsHeaders);
 
     // Request logging
@@ -184,9 +191,12 @@ class App {
       await this.initializeServices();
       
       // Start HTTP server
-      this.server = this.app.listen(this.port, () => {
+      // Bind to 0.0.0.0 in development to accept connections from localhost IPv4/IPv6
+      const listenHost = (config.server.env === 'development') ? '0.0.0.0' : config.server.host;
+      this.server = this.app.listen(this.port, listenHost, () => {
+        const addr = this.server.address();
         console.log('🚀 Server started successfully!');
-        console.log(`📍 Server running on port ${this.port}`);
+        console.log(`📍 Server running on ${addr.address}:${addr.port} (${addr.family})`);
         console.log(`🌐 Environment: ${config.server.env}`);
         console.log(`📊 Database: ${dbConnection.getConnectionStatus().name}`);
         

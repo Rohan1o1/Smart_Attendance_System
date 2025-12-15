@@ -3,7 +3,7 @@
  * Manage classes and start attendance sessions
  */
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, 
   Calendar, 
@@ -27,139 +27,143 @@ const TeacherClasses = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeSession, setActiveSession] = useState(null);
+  const [actionLoading, setActionLoading] = useState(null);
 
-  // Sample classes data
-  const sampleClasses = [
-    {
-      _id: '1',
-      subject: 'Computer Science 101',
-      subjectCode: 'CS101',
-      department: 'Computer Science',
-      schedule: {
-        dayOfWeek: 'Monday',
-        startTime: '09:00',
-        endTime: '13:00'
-      },
-      location: {
-        latitude: 22.823101464024948,
-        longitude: 88.63942781760827,
-        address: 'Lab A, Engineering Building'
-      },
-      enrolledStudents: 45,
-      attendanceWindow: {
-        beforeMinutes: 300,
-        afterMinutes: 300
-      },
-      status: 'scheduled'
-    },
-    {
-      _id: '2',
-      subject: 'Chemistry Lab',
-      subjectCode: 'CHEM201',
-      department: 'Chemistry',
-      schedule: {
-        dayOfWeek: 'Wednesday',
-        startTime: '10:00',
-        endTime: '13:00'
-      },
-      location: {
-        latitude: 22.823001464024948,
-        longitude: 88.63942781760827,
-        address: 'Chemistry Lab, Science Building'
-      },
-      enrolledStudents: 32,
-      attendanceWindow: {
-        beforeMinutes: 300,
-        afterMinutes: 300
-      },
-      status: 'scheduled'
-    },
-    {
-      _id: '3',
-      subject: 'Data Structures',
-      subjectCode: 'CS301',
-      department: 'Computer Science',
-      schedule: {
-        dayOfWeek: 'Friday',
-        startTime: '14:00',
-        endTime: '16:00'
-      },
-      location: {
-        latitude: 22.823201464024948,
-        longitude: 88.63942781760827,
-        address: 'Room 301, Computer Science Building'
-      },
-      enrolledStudents: 38,
-      attendanceWindow: {
-        beforeMinutes: 300,
-        afterMinutes: 300
-      },
-      status: 'scheduled'
+  const fetchClasses = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Use user assignment to filter classes (department/semester/section)
+      const params = {};
+      if (user?.department) params.department = user.department;
+      if (user?.semester) params.semester = user.semester;
+      if (user?.section) params.section = user.section;
+      const res = await classAPI.getMyClasses(params);
+      const data = res && res.data ? res.data : res;
+      const items = data.classes || data;
+      const mappedItems = items.map((c, idx) => {
+        // Some server responses use `id` instead of `_id` (models transform).
+        const id = c._id || c.id || `tmp-${idx}`;
+        return {
+          _id: id,
+          subject: c.subject,
+          subjectCode: c.subjectCode,
+          department: c.department,
+          schedule: c.schedule || {},
+          location: c.location || {},
+          enrolledStudents: Array.isArray(c.enrolledStudents) ? c.enrolledStudents.length : (c.enrolledStudents || 0),
+          attendanceWindow: c.attendanceWindow || {},
+          status: c.status || 'scheduled'
+        };
+      });
+  console.debug('Fetched classes:', mappedItems.map(mi => ({ id: mi._id, subject: mi.subject, status: mi.status })), 'filterParams:', params);
+      setClasses(mappedItems);
+    } catch (err) {
+      console.error('Failed to fetch teacher classes', err);
+      setError(err?.response?.data?.message || err.message || 'Failed to load classes');
+      toast.error('Failed to load classes');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   useEffect(() => {
     fetchClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchClasses = async () => {
-    try {
-      setLoading(true);
-      // For now, use sample data
-      setClasses(sampleClasses);
-      setLoading(false);
-    } catch (error) {
-      console.error('Failed to fetch classes:', error);
-      setError('Failed to load classes');
-      toast.error('Failed to load classes');
-      setLoading(false);
-    }
-  };
-
   const startAttendanceSession = async (classId) => {
+    if (!classId) {
+      console.warn('startAttendanceSession called without classId');
+      return;
+    }
+
+    setActionLoading(classId);
     try {
-      const classToStart = classes.find(c => c._id === classId);
-      if (!classToStart) {
-        toast.error('Class not found');
+      // Require browser geolocation for teacher location
+      if (!navigator.geolocation) {
+        toast.error('Geolocation is not supported by your browser');
+        setActionLoading(null);
         return;
       }
 
-      // In real implementation, this would make API call
+      // Increase timeout to 25s and allow for higher accuracy when available
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 25000, maximumAge: 5000 });
+      }).catch(err => {
+        // Surface friendly error to user
+        if (err && err.code === 1) {
+          throw new Error('Location permission denied. Please allow location access to start a class.');
+        }
+        if (err && err.code === 2) {
+          throw new Error('Location unavailable. Ensure your device has a working GPS signal.');
+        }
+        if (err && err.code === 3) {
+          throw new Error('Location acquisition timed out. Try again or move to an area with better reception.');
+        }
+        throw err;
+      });
+
+      const location = {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy || 0
+      };
+
+      // Don't send empty address strings - Joi will reject empty strings for optional fields.
+      if (pos?.coords?.address) {
+        location.address = pos.coords.address;
+      }
+
+      // Call server to start session (server will validate geofence and store teacherLocation)
+      const res = await classAPI.startSession(classId, { location });
+      const returned = res && res.data ? res.data : res;
+      const returnedClass = returned.class;
+
+      // Update local state with server result
       setActiveSession(classId);
-      toast.success(`Attendance session started for ${classToStart.subject}`);
-      
-      // Update class status
-      setClasses(prev => prev.map(c => 
-        c._id === classId 
-          ? { ...c, status: 'active', sessionStartTime: new Date().toISOString() }
-          : c
-      ));
-    } catch (error) {
-      console.error('Failed to start session:', error);
-      toast.error('Failed to start attendance session');
+      toast.success(returned.message || 'Session started');
+      setClasses(prev => prev.map(c => (
+        String(c._id) === String(classId) ? { ...c, status: 'active', teacherLocation: returnedClass?.teacherLocation || c.teacherLocation, sessionStartTime: returnedClass?.sessionStartTime || c.sessionStartTime } : c
+      )));
+    } catch (err) {
+      console.error('Failed to start session:', err);
+      // The API wrapper sometimes throws our own error object; normalize check
+      const apiData = err?.response?.data || (err && typeof err === 'object' ? err : null);
+      const msg = apiData?.message || err?.message || 'Failed to start attendance session';
+      const locationError = apiData?.locationError || apiData?.details?.message || apiData?.details?.message || apiData?.details;
+      if (locationError) {
+        // If details is an object, JSON stringify a short version
+        const locMsg = typeof locationError === 'string' ? locationError : JSON.stringify(locationError);
+        toast.error(`${msg}: ${locMsg}`);
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setActionLoading(null);
     }
   };
-
   const endAttendanceSession = async (classId) => {
+    if (!classId) return;
+    setActionLoading(classId);
     try {
-      const classToEnd = classes.find(c => c._id === classId);
-      if (!classToEnd) {
-        toast.error('Class not found');
-        return;
-      }
+      const res = await classAPI.endSession(classId);
+      const returned = res && res.data ? res.data : res;
+      const returnedClass = returned.class;
 
       setActiveSession(null);
-      toast.success(`Attendance session ended for ${classToEnd.subject}`);
-      
-      // Update class status
+      toast.success(returned.message || 'Session ended');
+
       setClasses(prev => prev.map(c => 
-        c._id === classId 
-          ? { ...c, status: 'completed', sessionEndTime: new Date().toISOString() }
+        String(c._id) === String(classId) 
+          ? { ...c, status: 'completed', sessionEndTime: returnedClass?.sessionEndTime || new Date().toISOString() }
           : c
       ));
     } catch (error) {
       console.error('Failed to end session:', error);
-      toast.error('Failed to end attendance session');
+      toast.error(error?.response?.data?.message || error.message || 'Failed to end attendance session');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -246,8 +250,8 @@ const TeacherClasses = () => {
 
       {/* Classes Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {classes.map((classItem) => (
-          <div key={classItem._id} className="card overflow-hidden">
+        {classes.map((classItem, idx) => (
+          <div key={classItem._id || `class-${idx}`} className="card overflow-hidden">
             {/* Class Header */}
             <div className="p-6 pb-4">
               <div className="flex justify-between items-start mb-4">

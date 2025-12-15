@@ -10,6 +10,15 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 // Auth Components
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
+import LoginSelector from './components/auth/LoginSelector';
+import StudentLogin from './components/auth/StudentLogin';
+import TeacherLogin from './components/auth/TeacherLogin';
+import AdminLogin from './components/auth/AdminLogin';
+import SuperAdminLogin from './components/auth/SuperAdminLogin';
+import RegisterSelector from './components/auth/RegisterSelector';
+import StudentRegister from './components/auth/StudentRegister';
+import TeacherRegister from './components/auth/TeacherRegister';
+import AdminRegister from './components/auth/AdminRegister';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 // Layout Components
@@ -26,6 +35,9 @@ import TeacherClasses from './pages/teacher/Classes';
 import TeacherAttendance from './pages/teacher/Attendance';
 import TeacherStudents from './pages/teacher/Students';
 import AdminDashboard from './pages/admin/Dashboard';
+import UserManagement from './pages/admin/UserManagement';
+import AdminClasses from './pages/admin/Classes';
+import SuperAdminDashboard from './pages/superadmin/Dashboard';
 import Profile from './pages/Profile';
 import NotFoundPage from './pages/error/NotFound';
 import UnauthorizedPage from './pages/error/Unauthorized';
@@ -50,6 +62,18 @@ const queryClient = new QueryClient({
 const AppRouter = () => {
   const { isAuthenticated, user } = useAuth();
 
+  // Helper to get redirect path based on role
+  const getRedirectPath = () => {
+    if (!user) return '/login';
+    switch (user.role) {
+      case 'superadmin': return '/superadmin';
+      case 'admin': return '/admin';
+      case 'teacher': return '/teacher';
+      case 'student': return '/student';
+      default: return '/login';
+    }
+  };
+
   return (
     <Routes>
       {/* Public Routes */}
@@ -57,31 +81,110 @@ const AppRouter = () => {
         path="/" 
         element={
           isAuthenticated ? (
-            <Navigate to={`/${user?.role || 'student'}`} replace />
+            <Navigate to={getRedirectPath()} replace />
           ) : (
             <LandingPage />
           )
         } 
       />
       
+      {/* Login Routes */}
       <Route 
         path="/login" 
         element={
           isAuthenticated ? (
-            <Navigate to={`/${user?.role || 'student'}`} replace />
+            <Navigate to={getRedirectPath()} replace />
           ) : (
-            <Login />
+            <LoginSelector />
           )
         } 
       />
-      
+
+      <Route 
+        path="/login/student" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <StudentLogin />
+          )
+        } 
+      />
+
+      <Route 
+        path="/login/teacher" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <TeacherLogin />
+          )
+        } 
+      />
+
+      <Route 
+        path="/login/admin" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <AdminLogin />
+          )
+        } 
+      />
+
+      <Route 
+        path="/login/superadmin" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <SuperAdminLogin />
+          )
+        } 
+      />
+
+      {/* Registration Routes */}
       <Route 
         path="/register" 
         element={
           isAuthenticated ? (
-            <Navigate to={`/${user?.role || 'student'}`} replace />
+            <Navigate to={getRedirectPath()} replace />
           ) : (
-            <Register />
+            <RegisterSelector />
+          )
+        } 
+      />
+
+      <Route 
+        path="/register/student" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <StudentRegister />
+          )
+        } 
+      />
+
+      <Route 
+        path="/register/teacher" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <TeacherRegister />
+          )
+        } 
+      />
+
+      <Route 
+        path="/register/admin" 
+        element={
+          isAuthenticated ? (
+            <Navigate to={getRedirectPath()} replace />
+          ) : (
+            <AdminRegister />
           )
         } 
       />
@@ -127,11 +230,29 @@ const AppRouter = () => {
             <Layout userRole="admin">
               <Routes>
                 <Route index element={<AdminDashboard />} />
-                <Route path="users" element={<div>Admin Users</div>} />
-                <Route path="classes" element={<div>Admin Classes</div>} />
+                <Route path="users" element={<UserManagement />} />
+                <Route path="classes" element={<AdminClasses />} />
                 <Route path="attendance" element={<div>Admin Attendance</div>} />
                 <Route path="analytics" element={<div>Admin Analytics</div>} />
                 <Route path="settings" element={<div>Admin Settings</div>} />
+                <Route path="profile" element={<Profile />} />
+              </Routes>
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/superadmin/*"
+        element={
+          <ProtectedRoute requiredRole="superadmin">
+            <Layout userRole="superadmin">
+              <Routes>
+                <Route index element={<SuperAdminDashboard />} />
+                <Route path="admins" element={<SuperAdminDashboard />} />
+                <Route path="users" element={<div>All Users</div>} />
+                <Route path="analytics" element={<div>System Analytics</div>} />
+                <Route path="settings" element={<div>System Settings</div>} />
                 <Route path="profile" element={<Profile />} />
               </Routes>
             </Layout>
@@ -144,7 +265,7 @@ const AppRouter = () => {
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <Navigate to={`/${user?.role || 'student'}`} replace />
+            <Navigate to={getRedirectPath()} replace />
           </ProtectedRoute>
         }
       />

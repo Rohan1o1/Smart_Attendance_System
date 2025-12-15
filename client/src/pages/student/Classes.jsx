@@ -24,91 +24,7 @@ const StudentClasses = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Mock data for now
-  const sampleClasses = [
-    {
-      _id: '1',
-      subject: 'Computer Science 101',
-      subjectCode: 'CS101',
-      teacherName: 'Dr. Smith',
-      department: 'Computer Science',
-      schedule: {
-        dayOfWeek: 'Monday',
-        startTime: '09:00',
-        endTime: '10:30'
-      },
-      teacherLocation: {
-        latitude: 22.823101464024948,
-        longitude: 88.63942781760827,
-        address: 'Lab A, Engineering Building, Habra'
-      },
-      status: 'scheduled'
-    },
-    {
-      _id: '2',
-      subject: 'Mathematics 201',
-      subjectCode: 'MATH201',
-      teacherName: 'Prof. Johnson',
-      department: 'Mathematics',
-      schedule: {
-        dayOfWeek: 'Tuesday',
-        startTime: '11:00',
-        endTime: '12:30'
-      },
-      teacherLocation: {
-        address: 'Room 205, Science Building'
-      },
-      status: 'scheduled'
-    },
-    {
-      _id: '3',
-      subject: 'Physics 101',
-      subjectCode: 'PHY101',
-      teacherName: 'Dr. Brown',
-      department: 'Physics',
-      schedule: {
-        dayOfWeek: 'Wednesday',
-        startTime: '14:00',
-        endTime: '15:30'
-      },
-      teacherLocation: {
-        address: 'Lab B, Physics Building'
-      },
-      status: 'active'
-    },
-    {
-      _id: '4',
-      subject: 'Chemistry Lab',
-      subjectCode: 'CHEM301',
-      teacherName: 'Dr. Wilson',
-      department: 'Chemistry',
-      schedule: {
-        dayOfWeek: 'Friday',
-        startTime: '10:00',
-        endTime: '13:00'
-      },
-      teacherLocation: {
-        address: 'Lab 201, Chemistry Building'
-      },
-      status: 'scheduled'
-    },
-    {
-      _id: '5',
-      subject: 'English Literature',
-      subjectCode: 'ENG202',
-      teacherName: 'Prof. Davis',
-      department: 'English',
-      schedule: {
-        dayOfWeek: 'Thursday',
-        startTime: '14:00',
-        endTime: '15:30'
-      },
-      teacherLocation: {
-        address: 'Room 305, Humanities Building'
-      },
-      status: 'scheduled'
-    }
-  ];
+  // No sample classes; load from API
 
   useEffect(() => {
     fetchClasses();
@@ -118,33 +34,20 @@ const StudentClasses = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Use actual API call
-      const response = await fetch('/api/class/enrolled', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch classes');
-      }
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setClasses(data.data.classes || []);
+      // Use classAPI which wraps axios and handles auth headers
+      const response = await classAPI.getEnrolledClasses();
+      if (response.success) {
+        setClasses(response.data.classes || response.data || []);
       } else {
-        // Fall back to sample data if API fails
-        setClasses(sampleClasses);
+        setClasses([]);
+        setError(response.message || 'Failed to load classes');
       }
       
     } catch (error) {
       console.error('Error fetching classes:', error);
-      // Use sample data as fallback
-      setClasses(sampleClasses);
-      toast.error('Using sample data - API endpoint not fully connected');
+      setClasses([]);
+      setError(error?.message || 'Failed to load classes');
+      toast.error('Failed to load classes from server');
     } finally {
       setLoading(false);
     }

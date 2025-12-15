@@ -72,4 +72,14 @@ router.get('/stats',
   attendanceController.getAttendanceStats
 );
 
+// @route   GET /attendance/teacher/stats
+// @desc    Get attendance statistics scoped to the authenticated teacher
+// @access  Private (Teacher or Admin)
+router.get('/teacher/stats',
+  authenticate,
+  authorize('teacher', 'admin'),
+  validate(dateRangeSchema, 'query'),
+  attendanceController.getTeacherStats
+);
+
 module.exports = router;

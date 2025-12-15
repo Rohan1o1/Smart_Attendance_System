@@ -19,110 +19,17 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
+import { classAPI } from '../../services/api';
 
 const TeacherReports = () => {
   const { user } = useAuth();
   const [selectedClass, setSelectedClass] = useState('all');
   const [selectedPeriod, setSelectedPeriod] = useState('week');
   const [loading, setLoading] = useState(false);
-
-  // Sample classes data
-  const classes = [
-    { id: '1', name: 'Computer Science 101', code: 'CS101' },
-    { id: '2', name: 'Chemistry Lab', code: 'CHEM201' },
-    { id: '3', name: 'Data Structures', code: 'CS301' }
-  ];
-
-  // Sample analytics data
-  const analyticsData = {
-    overall: {
-      totalStudents: 115,
-      averageAttendance: 89.2,
-      totalSessions: 24,
-      presentStudents: 102,
-      absentStudents: 13,
-      trend: 'up'
-    },
-    classStats: [
-      {
-        id: '1',
-        className: 'Computer Science 101',
-        code: 'CS101',
-        enrolledStudents: 45,
-        averageAttendance: 92.1,
-        lastSession: '2024-12-08',
-        totalSessions: 8,
-        presentToday: 42,
-        absentToday: 3,
-        trend: 'up'
-      },
-      {
-        id: '2',
-        className: 'Chemistry Lab',
-        code: 'CHEM201',
-        enrolledStudents: 32,
-        averageAttendance: 87.5,
-        lastSession: '2024-12-08',
-        totalSessions: 8,
-        presentToday: 28,
-        absentToday: 4,
-        trend: 'down'
-      },
-      {
-        id: '3',
-        className: 'Data Structures',
-        code: 'CS301',
-        enrolledStudents: 38,
-        averageAttendance: 88.7,
-        lastSession: '2024-12-06',
-        totalSessions: 8,
-        presentToday: 32,
-        absentToday: 6,
-        trend: 'up'
-      }
-    ],
-    weeklyData: [
-      { day: 'Mon', attendance: 95 },
-      { day: 'Tue', attendance: 87 },
-      { day: 'Wed', attendance: 92 },
-      { day: 'Thu', attendance: 89 },
-      { day: 'Fri', attendance: 84 },
-      { day: 'Sat', attendance: 91 },
-      { day: 'Sun', attendance: 0 }
-    ],
-    recentSessions: [
-      {
-        id: '1',
-        className: 'Computer Science 101',
-        date: '2024-12-08',
-        time: '09:00 AM',
-        duration: '90 minutes',
-        present: 42,
-        absent: 3,
-        attendanceRate: 93.3
-      },
-      {
-        id: '2',
-        className: 'Chemistry Lab',
-        date: '2024-12-08',
-        time: '10:00 AM',
-        duration: '180 minutes',
-        present: 28,
-        absent: 4,
-        attendanceRate: 87.5
-      },
-      {
-        id: '3',
-        className: 'Data Structures',
-        date: '2024-12-06',
-        time: '02:00 PM',
-        duration: '120 minutes',
-        present: 32,
-        absent: 6,
-        attendanceRate: 84.2
-      }
-    ]
-  };
+  const [classes, setClasses] = useState([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const [classesError, setClassesError] = useState(null);
+  const [analyticsData, setAnalyticsData] = useState(null);
 
   const exportReport = async (format = 'csv') => {
     try {
@@ -134,6 +41,31 @@ const TeacherReports = () => {
     } catch (error) {
       toast.error('Failed to export report');
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchClasses();
+    // TODO: fetch analytics once user selects class/period
+  }, []);
+
+  const fetchClasses = async () => {
+    try {
+      setClassesLoading(true);
+      const response = await classAPI.getMyClasses();
+      if (response.success) {
+        const items = response.data.classes || response.data || [];
+        setClasses(items.map(c => ({ id: c._id || c.id, name: c.subject || c.name, code: c.subjectCode || c.code })));
+      } else {
+        setClasses([]);
+        setClassesError(response.message || 'Failed to load classes');
+      }
+    } catch (err) {
+      console.error('Failed to load classes for reports:', err);
+      setClassesError(err?.message || 'Failed to load classes');
+      setClasses([]);
+    } finally {
+      setClassesLoading(false);
     }
   };
 

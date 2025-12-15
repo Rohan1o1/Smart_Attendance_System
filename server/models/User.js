@@ -61,9 +61,26 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: {
-      values: ['student', 'teacher', 'admin'],
-      message: 'Role must be either student, teacher, or admin'
+      values: ['student', 'teacher', 'admin', 'superadmin'],
+      message: 'Role must be student, teacher, admin, or superadmin'
     }
+  },
+
+  // Verification status (for teachers and students - must be verified by admin)
+  verified: {
+    type: Boolean,
+    default: function() {
+      return this.role === 'admin' || this.role === 'superadmin';
+    }
+  },
+
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+  verifiedAt: {
+    type: Date
   },
 
   // Student-specific fields
@@ -83,10 +100,46 @@ const userSchema = new mongoose.Schema({
     }
   },
 
+  // Roll number for students (8-12 digits)
+  rollNumber: {
+    type: String,
+    sparse: true,
+    unique: true,
+    validate: {
+      validator: function(value) {
+        if (this.role === 'student') {
+          return value && /^\d{8,12}$/.test(value);
+        }
+        return true;
+      },
+      message: 'Roll number must be 8-12 digits for students'
+    }
+  },
+
+  // Year for students (1-4)
+  year: {
+    type: Number,
+    min: 1,
+    max: 4,
+    required: function() {
+      return this.role === 'student';
+    }
+  },
+
+  // Section for students
+  section: {
+    type: String,
+    trim: true,
+    maxlength: [10, 'Section cannot exceed 10 characters'],
+    required: function() {
+      return this.role === 'student';
+    }
+  },
+
   department: {
     type: String,
     required: function() {
-      return this.role === 'student' || this.role === 'teacher';
+      return this.role === 'student' || this.role === 'teacher' || this.role === 'admin';
     },
     trim: true
   },
@@ -100,20 +153,51 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-  // Teacher-specific fields
-  employeeId: {
+  // Teacher-specific fields - teacherId (8-12 digits)
+  teacherId: {
     type: String,
     sparse: true,
     unique: true,
     validate: {
       validator: function(value) {
-        // Only required for teachers
         if (this.role === 'teacher') {
-          return value && value.trim().length > 0;
+          return value && /^\d{8,12}$/.test(value);
         }
         return true;
       },
-      message: 'Employee ID is required for teachers'
+      message: 'Teacher ID must be 8-12 digits'
+    }
+  },
+
+  // Admin-specific fields - adminId (8-12 digits)
+  adminId: {
+    type: String,
+    sparse: true,
+    unique: true,
+    validate: {
+      validator: function(value) {
+        if (this.role === 'admin') {
+          return value && /^\d{8,12}$/.test(value);
+        }
+        return true;
+      },
+      message: 'Admin ID must be 8-12 digits'
+    }
+  },
+
+  // SuperAdmin-specific fields - userId (8-12 digits)
+  superAdminId: {
+    type: String,
+    sparse: true,
+    unique: true,
+    validate: {
+      validator: function(value) {
+        if (this.role === 'superadmin') {
+          return value && /^\d{8,12}$/.test(value);
+        }
+        return true;
+      },
+      message: 'SuperAdmin ID must be 8-12 digits'
     }
   },
 
@@ -277,6 +361,11 @@ userSchema.statics.findByCredentials = async function(email, password) {
     throw new Error('Account is temporarily locked. Please try again later.');
   }
 
+  // Check if teacher/student needs verification
+  if ((user.role === 'teacher' || user.role === 'student') && !user.verified) {
+    throw new Error('Your account is pending verification by the department admin. Please wait for approval.');
+  }
+
   const isPasswordValid = await user.comparePassword(password);
   
   if (!isPasswordValid) {
@@ -290,6 +379,88 @@ userSchema.statics.findByCredentials = async function(email, password) {
   }
 
   return user;
+};
+
+// Static method to find by roll number (for student login)
+userSchema.statics.findByRollNumber = async function(rollNumber, password) {
+  const user = await this.findOne({ 
+    rollNumber: rollNumber,
+    role: 'student',
+    isActive: true 
+  }).select('+password');
+
+  if (!user) {
+    throw new Error('Invalid roll number or password');
+  }
+
+  if (user.isLocked) {
+    throw new Error('Account is temporarily locked. Please try again later.');
+  }
+
+  if (!user.verified) {
+    throw new Error('Your account is pending verification by the department admin. Please wait for approval.');
+  }
+
+  const isPasswordValid = await user.comparePassword(password);
+  
+  if (!isPasswordValid) {
+    await user.incLoginAttempts();
+    throw new Error('Invalid roll number or password');
+  }
+
+  if (user.loginAttempts || user.lockUntil) {
+    await user.resetLoginAttempts();
+  }
+
+  return user;
+};
+
+// Static method to check if department exists (has an admin)
+userSchema.statics.departmentExists = async function(department) {
+  const admin = await this.findOne({ 
+    department: department.trim(),
+    role: 'admin',
+    isActive: true
+  });
+  return !!admin;
+};
+
+// Static method to get all existing departments
+userSchema.statics.getAllDepartments = async function() {
+  const admins = await this.find({ 
+    role: 'admin',
+    isActive: true 
+  }).select('department');
+  return [...new Set(admins.map(admin => admin.department))];
+};
+
+// Static method to verify user (for admin to verify teachers/students)
+userSchema.statics.verifyUser = async function(userId, adminId) {
+  const user = await this.findById(userId);
+  if (!user) {
+    throw new Error('User not found');
+  }
+  
+  if (user.role !== 'teacher' && user.role !== 'student') {
+    throw new Error('Only teachers and students need verification');
+  }
+
+  user.verified = true;
+  user.verifiedBy = adminId;
+  user.verifiedAt = new Date();
+  await user.save();
+  
+  return user;
+};
+
+// Static method to get unverified users for a department
+userSchema.statics.getUnverifiedUsers = async function(department) {
+  return await this.find({
+    department: department,
+    verified: false,
+    role: { $in: ['teacher', 'student'] },
+    isActive: true
+  }).select('-password');
 };
 
 // Static method to generate student ID

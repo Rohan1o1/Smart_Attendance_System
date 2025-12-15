@@ -93,20 +93,21 @@ const securityHeaders = helmet({
  * CORS headers middleware
  */
 const corsHeaders = (req, res, next) => {
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:5173', // Vite default
-    'http://localhost:5176', // Vite current
-    'http://localhost:5175', // Vite current
-    'http://localhost:5174', // Vite fallback 1
-    'http://localhost:5175', // Vite fallback 2
-    config.security.corsOptions.origin
-  ].filter(Boolean);
-
+  // In development allow local dev server origins more permissively
   const origin = req.headers.origin;
-  
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  if (config.server.env === 'development') {
+    // Allow any localhost origin (Vite ports) during development
+    if (origin && /https?:\/\/localhost(:\d+)?/.test(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      // As a safe fallback allow the configured client URL
+      res.setHeader('Access-Control-Allow-Origin', config.client.url || '*');
+    }
+  } else {
+    const allowedOrigins = [config.security.corsOptions.origin].filter(Boolean);
+    if (allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
   }
   
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -261,6 +262,16 @@ const requestLogger = (req, res, next) => {
 const errorHandler = (error, req, res, next) => {
   console.error('🚨 Error:', error);
 
+  // If body-parser failed to parse JSON, log the raw body (development only)
+  try {
+    if (req && req.rawBody) {
+      const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody);
+      console.error('🧾 Raw request body (truncated 1k):', raw.substring(0, 1000));
+    }
+  } catch (e) {
+    console.error('Error while printing rawBody:', e);
+  }
+
   // Default error response
   let statusCode = error.statusCode || 500;
   let message = error.message || 'Internal server error';
@@ -309,7 +320,11 @@ const errorHandler = (error, req, res, next) => {
   res.status(statusCode).json({
     success: false,
     message,
-    ...(config.server.env === 'development' && { stack: error.stack })
+    ...(config.server.env === 'development' && { stack: error.stack }),
+    // Include raw body snippet for JSON parse errors to help debugging in development
+    ...(config.server.env === 'development' && error.type === 'entity.parse.failed' && req && req.rawBody
+      ? { rawBody: (Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8').slice(0, 1000) : String(req.rawBody).slice(0, 1000)) }
+      : {})
   });
 };
 
