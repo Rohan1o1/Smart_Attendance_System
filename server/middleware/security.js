@@ -11,23 +11,30 @@ const config = require('../config');
  * Rate limiting middleware
  * Prevents brute force attacks and API abuse
  */
-const rateLimiter = rateLimit({
-  windowMs: config.security.rateLimitWindowMs,
-  max: config.security.rateLimitMax,
-  message: {
-    success: false,
-    message: 'Too many requests from this IP, please try again later.'
-  },
-  standardHeaders: true, // Return rate limit info in headers
-  legacyHeaders: false,
-  handler: (req, res) => {
-    res.status(429).json({
+// In development we make the global rate limiter a no-op to avoid accidental 429s
+// while testing. In production we keep the stricter limits.
+let rateLimiter;
+if (config.server.env === 'development') {
+  rateLimiter = (req, res, next) => next();
+} else {
+  rateLimiter = rateLimit({
+    windowMs: config.security.rateLimitWindowMs,
+    max: config.security.rateLimitMax,
+    message: {
       success: false,
-      message: 'Rate limit exceeded. Please try again later.',
-      retryAfter: Math.round(config.security.rateLimitWindowMs / 1000)
-    });
-  }
-});
+      message: 'Too many requests from this IP, please try again later.'
+    },
+    standardHeaders: true, // Return rate limit info in headers
+    legacyHeaders: false,
+    handler: (req, res) => {
+      res.status(429).json({
+        success: false,
+        message: 'Rate limit exceeded. Please try again later.',
+        retryAfter: Math.round(config.security.rateLimitWindowMs / 1000)
+      });
+    }
+  });
+}
 
 /**
  * Strict rate limiter for authentication endpoints
@@ -59,14 +66,21 @@ const faceUploadRateLimiter = rateLimit({
 /**
  * Attendance submission rate limiter
  */
-const attendanceRateLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 3, // Limit to 3 attendance submissions per minute
-  message: {
-    success: false,
-    message: 'Too many attendance submissions. Please wait a minute before trying again.'
-  }
-});
+// Attendance submissions are very rate-sensitive; relax in development so
+// local testing is not blocked by tight limits.
+let attendanceRateLimiter;
+if (config.server.env === 'development') {
+  attendanceRateLimiter = (req, res, next) => next();
+} else {
+  attendanceRateLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 3, // Limit to 3 attendance submissions per minute
+    message: {
+      success: false,
+      message: 'Too many attendance submissions. Please wait a minute before trying again.'
+    }
+  });
+}
 
 /**
  * Security headers middleware

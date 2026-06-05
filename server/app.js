@@ -23,7 +23,8 @@ const {
 } = require('./middleware');
 
 // Import routes
-const routes = require('./routes');
+// routes were moved under middleware/routes — require the correct path
+const routes = require('./middleware/routes');
 
 /**
  * Express Application Setup

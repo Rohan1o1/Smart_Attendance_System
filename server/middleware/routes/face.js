@@ -1,12 +1,12 @@
 const express = require('express');
-const { faceController } = require('../controllers');
+const { faceController } = require('../../controllers');
 const { 
   authenticate, 
   authorize,
   validate,
   faceRegistrationSchema,
   faceUploadRateLimiter
-} = require('../middleware');
+} = require('..');
 
 const router = express.Router();
 
