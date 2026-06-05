@@ -1,5 +1,5 @@
 const express = require('express');
-const { authController } = require('../controllers');
+const { authController } = require('../../controllers');
 const { 
   authenticate, 
   authorize, 
@@ -10,7 +10,7 @@ const {
   passwordChangeSchema,
   idParameterSchema,
   authRateLimiter
-} = require('../middleware');
+} = require('..');
 
 const router = express.Router();
 

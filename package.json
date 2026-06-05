@@ -1,0 +1,21 @@
+{
+  "name": "attendencesys",
+  "version": "1.0.0",
+  "description": "A comprehensive MERN stack application that combines facial recognition and GPS location verification to create a secure and reliable attendance tracking system for educational institutions.",
+  "main": "check-active-classes.js",
+  "scripts": {
+    "build": "npm install --prefix client && npm install --prefix server && npm run build --prefix client",
+    "start": "npm run start --prefix server"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Rohan1o1/Smart_Attendance_System.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Rohan1o1/Smart_Attendance_System/issues"
+  },
+  "homepage": "https://github.com/Rohan1o1/Smart_Attendance_System#readme"
+}

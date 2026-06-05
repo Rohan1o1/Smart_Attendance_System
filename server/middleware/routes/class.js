@@ -1,5 +1,5 @@
 const express = require('express');
-const { classController } = require('../controllers');
+const { classController } = require('../../controllers');
 const { 
   authenticate, 
   authorize,
@@ -9,7 +9,7 @@ const {
   studentEnrollmentSchema,
   idParameterSchema,
   paginationSchema
-} = require('../middleware');
+} = require('..');
 
 const router = express.Router();
 

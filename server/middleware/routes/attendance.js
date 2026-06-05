@@ -1,5 +1,5 @@
 const express = require('express');
-const { attendanceController } = require('../controllers');
+const { attendanceController } = require('../../controllers');
 const { 
   authenticate, 
   authorize,
@@ -9,7 +9,7 @@ const {
   paginationSchema,
   dateRangeSchema,
   attendanceRateLimiter
-} = require('../middleware');
+} = require('..');
 
 const router = express.Router();
 
