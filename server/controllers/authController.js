@@ -1137,13 +1137,53 @@ const getAllAdmins = async (req, res) => {
  */
 const createAdmin = async (req, res) => {
   try {
-    const { name, email, password, department, phone, employeeId } = req.body;
+    // Accept either a single `name` or `firstName`/`lastName`
+    let { name, firstName, lastName, email, password, department, phone, phoneNumber, employeeId, adminId } = req.body;
+
+    // Normalize phone field
+    phoneNumber = phoneNumber || phone;
+
+    // If single name provided, split into first/last
+    if ((!firstName || !lastName) && name && typeof name === 'string') {
+      const parts = name.trim().split(/\s+/);
+      firstName = firstName || parts.shift() || '';
+      lastName = lastName || parts.join(' ') || '';
+    }
 
     // Validate required fields
-    if (!name || !email || !password || !department) {
+    if (!firstName || !lastName || !email || !password || !department) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email, password, and department are required'
+        message: 'First name, last name, email, password, and department are required'
+      });
+    }
+
+    // Basic email format check to provide faster, clearer errors
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Password length check (mirror schema requirement)
+    const minPasswordLength = config.validation && config.validation.minPasswordLength ? config.validation.minPasswordLength : 8;
+    if (!password || String(password).length < minPasswordLength) {
+      return res.status(400).json({
+        success: false,
+        message: `Password must be at least ${minPasswordLength} characters long`
+      });
+    }
+
+    // Prefer explicit adminId param, fallback to employeeId for backwards compatibility
+    adminId = adminId || employeeId;
+
+    // Validate adminId format if provided
+    if (!adminId || !/^\d{8,12}$/.test(adminId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin ID (adminId or employeeId) must be 8-12 digits'
       });
     }
 
@@ -1165,14 +1205,15 @@ const createAdmin = async (req, res) => {
       });
     }
 
-    // Create admin user
+    // Create admin user (map fields to schema)
     const admin = new User({
-      name,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
       email: email.toLowerCase(),
       password,
-      department,
-      phone,
-      employeeId,
+      department: department.trim(),
+      phoneNumber,
+      adminId,
       role: 'admin',
       verified: true, // SuperAdmin-created admins are auto-verified
       isActive: true
@@ -1191,7 +1232,19 @@ const createAdmin = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Create admin error:', error);
+    console.error('Create admin error:', error && error.stack ? error.stack : error);
+
+    // Surface validation and duplicate key errors to client
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || 'field';
+      return res.status(400).json({ success: false, message: `${field} already exists` });
+    }
+
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ success: false, message: 'Validation error', errors });
+    }
+
     res.status(500).json({
       success: false,
       message: 'Failed to create admin'
