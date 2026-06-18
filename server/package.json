@@ -19,6 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.17",
+    "attendencesys": "file:..",
     "bcryptjs": "^2.4.3",
     "canvas": "^3.2.0",
     "compression": "^1.7.4",
