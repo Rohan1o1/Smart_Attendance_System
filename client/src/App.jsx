@@ -249,10 +249,8 @@ const AppRouter = () => {
             <Layout userRole="superadmin">
               <Routes>
                 <Route index element={<SuperAdminDashboard />} />
-                <Route path="admins" element={<SuperAdminDashboard />} />
-                <Route path="users" element={<div>All Users</div>} />
-                <Route path="analytics" element={<div>System Analytics</div>} />
-                <Route path="settings" element={<div>System Settings</div>} />
+                <Route path="admins" element={<SuperAdminDashboard section="departments" />} />
+                <Route path="users" element={<SuperAdminDashboard section="users" />} />
                 <Route path="profile" element={<Profile />} />
               </Routes>
             </Layout>

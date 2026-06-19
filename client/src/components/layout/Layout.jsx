@@ -68,8 +68,6 @@ const Layout = ({ children, userRole }) => {
           ...baseItems,
           { name: 'Departments', href: '/superadmin/admins', icon: Building },
           { name: 'All Users', href: '/superadmin/users', icon: Users },
-          { name: 'Analytics', href: '/superadmin/analytics', icon: BarChart3 },
-          { name: 'Settings', href: '/superadmin/settings', icon: Settings },
           { name: 'Profile', href: '/superadmin/profile', icon: User }
         ];
       

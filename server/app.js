@@ -194,7 +194,11 @@ class App {
     try {
       // Connect to database
       console.log("🔗 Connecting to database...");
-      await dbConnection.connect();
+      if (config.server.env === "development") {
+        await dbConnection.connectWithRetry();
+      } else {
+        await dbConnection.connect();
+      }
 
       // Initialize services
       await this.initializeServices();

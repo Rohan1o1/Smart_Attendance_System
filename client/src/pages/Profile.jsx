@@ -531,6 +531,7 @@ const Profile = () => {
 
       {/* Face Recognition Section - Only for non-superadmin users */}
       {user?.role !== 'superadmin' && (
+      <>
       <div className="card">
         <div className="card-header">
           <div className="flex items-center justify-between">
@@ -737,6 +738,7 @@ const Profile = () => {
           </div>
         </div>
       )}
+      </>
       )}
     </div>
   );
