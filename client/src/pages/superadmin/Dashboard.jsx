@@ -14,10 +14,13 @@ import { superAdminAPI, authAPI } from '../../services/api';
 const SuperAdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const [admins, setAdmins] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState('admins'); // 'admins', 'teachers', 'students'
 
   // Fetch data on mount
   useEffect(() => {
@@ -27,9 +30,10 @@ const SuperAdminDashboard = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, adminsRes] = await Promise.all([
+      const [statsRes, adminsRes, allUsersRes] = await Promise.all([
         superAdminAPI.getSystemStats(),
-        superAdminAPI.getAllAdmins()
+        superAdminAPI.getAllAdmins(),
+        superAdminAPI.getAllUsers()
       ]);
 
       if (statsRes.success) {
@@ -37,6 +41,11 @@ const SuperAdminDashboard = () => {
       }
       if (adminsRes.success) {
         setAdmins(adminsRes.data.admins);
+      }
+      if (allUsersRes.success) {
+        const allUsers = allUsersRes.data.users || [];
+        setTeachers(allUsers.filter(u => u.role === 'teacher'));
+        setStudents(allUsers.filter(u => u.role === 'student'));
       }
     } catch (err) {
       setError('Failed to load dashboard data');
@@ -141,14 +150,64 @@ const SuperAdminDashboard = () => {
         />
       </div>
 
-      {/* Departments List */}
+      {/* Users Management Section with Tabs */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Departments & Admins</h2>
-          <p className="text-sm text-gray-600">Manage department administrators</p>
+          <h2 className="text-lg font-semibold text-gray-900">Manage Users</h2>
+          <p className="text-sm text-gray-600">View and manage all users across the system</p>
         </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('admins')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'admins'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            Admins ({admins.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('teachers')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'teachers'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            Teachers ({teachers.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('students')}
+            className={`flex items-center gap-2 px-6 py-4 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'students'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <GraduationCap className="w-4 h-4" />
+            Students ({students.length})
+          </button>
+        </div>
+
         <div className="p-6">
-          {admins.length === 0 ? (
+          {activeTab === 'admins' && (
+            <>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Departments & Admins</h3>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Admin
+                </button>
+              </div>
+              {admins.length === 0 ? (
             <div className="text-center py-12">
               <Building className="w-12 h-12 mx-auto text-gray-400 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No departments yet</h3>
@@ -223,6 +282,156 @@ const SuperAdminDashboard = () => {
                 </tbody>
               </table>
             </div>
+          )}
+            </>
+          )}
+
+          {activeTab === 'teachers' && (
+            <>
+              {teachers.length === 0 ? (
+                <div className="text-center py-12">
+                  <BookOpen className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No teachers yet</h3>
+                  <p className="text-gray-600">Teachers will appear here once they register</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-sm text-gray-500 border-b">
+                        <th className="pb-3 font-medium">Name</th>
+                        <th className="pb-3 font-medium">Email</th>
+                        <th className="pb-3 font-medium">Department</th>
+                        <th className="pb-3 font-medium">Status</th>
+                        <th className="pb-3 font-medium">Verification</th>
+                        <th className="pb-3 font-medium">Joined</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {teachers.map((teacher) => (
+                        <tr key={teacher._id} className="hover:bg-gray-50">
+                          <td className="py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                <BookOpen className="w-5 h-5 text-green-600" />
+                              </div>
+                              <span className="font-medium text-gray-900">{teacher.firstName} {teacher.lastName}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-gray-600">{teacher.email}</td>
+                          <td className="py-4 text-gray-700">{teacher.department || 'N/A'}</td>
+                          <td className="py-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              teacher.isActive 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {teacher.isActive ? (
+                                <>
+                                  <CheckCircle className="w-3 h-3" />
+                                  Active
+                                </>
+                              ) : (
+                                <>
+                                  <X className="w-3 h-3" />
+                                  Inactive
+                                </>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              teacher.verified 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {teacher.verified ? 'Verified' : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="py-4 text-gray-600 text-sm">
+                            {new Date(teacher.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'students' && (
+            <>
+              {students.length === 0 ? (
+                <div className="text-center py-12">
+                  <GraduationCap className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No students yet</h3>
+                  <p className="text-gray-600">Students will appear here once they register</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left text-sm text-gray-500 border-b">
+                        <th className="pb-3 font-medium">Name</th>
+                        <th className="pb-3 font-medium">Email</th>
+                        <th className="pb-3 font-medium">Department</th>
+                        <th className="pb-3 font-medium">Status</th>
+                        <th className="pb-3 font-medium">Verification</th>
+                        <th className="pb-3 font-medium">Joined</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {students.map((student) => (
+                        <tr key={student._id} className="hover:bg-gray-50">
+                          <td className="py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                                <GraduationCap className="w-5 h-5 text-orange-600" />
+                              </div>
+                              <span className="font-medium text-gray-900">{student.firstName} {student.lastName}</span>
+                            </div>
+                          </td>
+                          <td className="py-4 text-gray-600">{student.email}</td>
+                          <td className="py-4 text-gray-700">{student.department || 'N/A'}</td>
+                          <td className="py-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              student.isActive 
+                                ? 'bg-green-100 text-green-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {student.isActive ? (
+                                <>
+                                  <CheckCircle className="w-3 h-3" />
+                                  Active
+                                </>
+                              ) : (
+                                <>
+                                  <X className="w-3 h-3" />
+                                  Inactive
+                                </>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                              student.verified 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {student.verified ? 'Verified' : 'Pending'}
+                            </span>
+                          </td>
+                          <td className="py-4 text-gray-600 text-sm">
+                            {new Date(student.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
