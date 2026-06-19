@@ -434,6 +434,16 @@ userSchema.statics.getAllDepartments = async function() {
   return [...new Set(admins.map(admin => admin.department))];
 };
 
+// Static method to get distinct departments across users (used by system stats)
+userSchema.statics.getDistinctDepartments = async function() {
+  // Use MongoDB distinct to efficiently fetch unique department values
+  const departments = await this.distinct('department', { department: { $exists: true, $ne: null } });
+  // Ensure trimmed strings and filter out empty entries
+  return departments
+    .filter(d => typeof d === 'string' && d.trim().length > 0)
+    .map(d => d.trim());
+};
+
 // Static method to verify user (for admin to verify teachers/students)
 userSchema.statics.verifyUser = async function(userId, adminId) {
   const user = await this.findById(userId);
