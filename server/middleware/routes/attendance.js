@@ -1,15 +1,15 @@
-const express = require('express');
-const { attendanceController } = require('../controllers');
-const { 
-  authenticate, 
+const express = require("express");
+const { attendanceController } = require("../../controllers");
+const {
+  authenticate,
   authorize,
   validate,
   attendanceSubmissionSchema,
   idParameterSchema,
   paginationSchema,
   dateRangeSchema,
-  attendanceRateLimiter
-} = require('../middleware');
+  attendanceRateLimiter,
+} = require("../../middleware");
 
 const router = express.Router();
 
@@ -20,44 +20,48 @@ const router = express.Router();
 // @route   POST /attendance/submit
 // @desc    Submit attendance for a class
 // @access  Private (Student)
-router.post('/submit', 
+router.post(
+  "/submit",
   authenticate,
-  authorize('student'),
+  authorize("student"),
   attendanceRateLimiter,
   validate(attendanceSubmissionSchema),
-  attendanceController.submitAttendance
+  attendanceController.submitAttendance,
 );
 
 // @route   GET /attendance/student/:studentId
 // @desc    Get student's attendance history
 // @access  Private (Student - own records, Teacher - own classes, Admin - all)
-router.get('/student/:studentId', 
+router.get(
+  "/student/:studentId",
   authenticate,
-  validate(idParameterSchema, 'params'),
-  validate(paginationSchema, 'query'),
-  validate(dateRangeSchema, 'query'),
-  attendanceController.getStudentAttendance
+  validate(idParameterSchema, "params"),
+  validate(paginationSchema, "query"),
+  validate(dateRangeSchema, "query"),
+  attendanceController.getStudentAttendance,
 );
 
 // @route   GET /attendance/class/:classId
 // @desc    Get class attendance report
 // @access  Private (Teacher - own classes, Admin - all)
-router.get('/class/:classId', 
+router.get(
+  "/class/:classId",
   authenticate,
-  authorize('teacher', 'admin'),
-  validate(idParameterSchema, 'params'),
-  validate(paginationSchema, 'query'),
-  attendanceController.getClassAttendance
+  authorize("teacher", "admin"),
+  validate(idParameterSchema, "params"),
+  validate(paginationSchema, "query"),
+  attendanceController.getClassAttendance,
 );
 
 // @route   PUT /attendance/:attendanceId
 // @desc    Update attendance record
 // @access  Private (Teacher - own classes, Admin - all)
-router.put('/:attendanceId', 
+router.put(
+  "/:attendanceId",
   authenticate,
-  authorize('teacher', 'admin'),
-  validate(idParameterSchema, 'params'),
-  attendanceController.updateAttendance
+  authorize("teacher", "admin"),
+  validate(idParameterSchema, "params"),
+  attendanceController.updateAttendance,
 );
 
 // Admin Routes
@@ -65,21 +69,23 @@ router.put('/:attendanceId',
 // @route   GET /attendance/stats
 // @desc    Get attendance statistics for admin dashboard
 // @access  Private (Admin only)
-router.get('/stats', 
+router.get(
+  "/stats",
   authenticate,
-  authorize('admin'),
-  validate(dateRangeSchema, 'query'),
-  attendanceController.getAttendanceStats
+  authorize("admin"),
+  validate(dateRangeSchema, "query"),
+  attendanceController.getAttendanceStats,
 );
 
 // @route   GET /attendance/teacher/stats
 // @desc    Get attendance statistics scoped to the authenticated teacher
 // @access  Private (Teacher or Admin)
-router.get('/teacher/stats',
+router.get(
+  "/teacher/stats",
   authenticate,
-  authorize('teacher', 'admin'),
-  validate(dateRangeSchema, 'query'),
-  attendanceController.getTeacherStats
+  authorize("teacher", "admin"),
+  validate(dateRangeSchema, "query"),
+  attendanceController.getTeacherStats,
 );
 
 module.exports = router;

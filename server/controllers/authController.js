@@ -1,6 +1,6 @@
-const User = require('../models/User');
-const { generateToken, generateRefreshToken } = require('../middleware/auth');
-const config = require('../config');
+const User = require("../models/User");
+const { generateToken, generateRefreshToken } = require("../middleware/auth");
+const config = require("../config");
 
 /**
  * Authentication Controller
@@ -22,14 +22,14 @@ const registerAdmin = async (req, res) => {
       department,
       adminId,
       phone,
-      phoneNumber
+      phoneNumber,
     } = req.body;
 
     // Validate admin ID format (8-12 digits)
     if (!adminId || !/^\d{8,12}$/.test(adminId)) {
       return res.status(400).json({
         success: false,
-        message: 'Admin ID must be 8-12 digits'
+        message: "Admin ID must be 8-12 digits",
       });
     }
 
@@ -38,7 +38,8 @@ const registerAdmin = async (req, res) => {
     if (departmentExists) {
       return res.status(400).json({
         success: false,
-        message: 'This department already has an admin. Please contact existing admin or choose a different department.'
+        message:
+          "This department already has an admin. Please contact existing admin or choose a different department.",
       });
     }
 
@@ -47,7 +48,7 @@ const registerAdmin = async (req, res) => {
     if (existingEmail) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: "User with this email already exists",
       });
     }
 
@@ -56,7 +57,7 @@ const registerAdmin = async (req, res) => {
     if (existingAdminId) {
       return res.status(400).json({
         success: false,
-        message: 'This Admin ID is already in use'
+        message: "This Admin ID is already in use",
       });
     }
 
@@ -70,8 +71,8 @@ const registerAdmin = async (req, res) => {
       phoneNumber: phoneNumber || phone,
       department,
       adminId,
-      role: 'admin',
-      verified: true // Admin is automatically verified
+      role: "admin",
+      verified: true, // Admin is automatically verified
     });
 
     await admin.save();
@@ -84,16 +85,15 @@ const registerAdmin = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Admin registered successfully',
+      message: "Admin registered successfully",
       data: {
         user: admin,
         token,
-        refreshToken
-      }
+        refreshToken,
+      },
     });
-
   } catch (error) {
-    console.error('Admin registration error:', error);
+    console.error("Admin registration error:", error);
     handleRegistrationError(error, res);
   }
 };
@@ -114,14 +114,14 @@ const registerTeacher = async (req, res) => {
       department,
       teacherId,
       phone,
-      phoneNumber
+      phoneNumber,
     } = req.body;
 
     // Validate teacher ID format (8-12 digits)
     if (!teacherId || !/^\d{8,12}$/.test(teacherId)) {
       return res.status(400).json({
         success: false,
-        message: 'Teacher ID must be 8-12 digits'
+        message: "Teacher ID must be 8-12 digits",
       });
     }
 
@@ -130,7 +130,8 @@ const registerTeacher = async (req, res) => {
     if (!departmentExists) {
       return res.status(400).json({
         success: false,
-        message: 'This department does not exist. Please contact your department admin or select an existing department.'
+        message:
+          "This department does not exist. Please contact your department admin or select an existing department.",
       });
     }
 
@@ -139,7 +140,7 @@ const registerTeacher = async (req, res) => {
     if (existingEmail) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: "User with this email already exists",
       });
     }
 
@@ -148,7 +149,7 @@ const registerTeacher = async (req, res) => {
     if (existingTeacherId) {
       return res.status(400).json({
         success: false,
-        message: 'This Teacher ID is already in use'
+        message: "This Teacher ID is already in use",
       });
     }
 
@@ -161,8 +162,8 @@ const registerTeacher = async (req, res) => {
       phoneNumber: phoneNumber || phone,
       department,
       teacherId,
-      role: 'teacher',
-      verified: false // Needs admin verification
+      role: "teacher",
+      verified: false, // Needs admin verification
     });
 
     await teacher.save();
@@ -171,15 +172,15 @@ const registerTeacher = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Teacher registered successfully. Please wait for admin verification before logging in.',
+      message:
+        "Teacher registered successfully. Please wait for admin verification before logging in.",
       data: {
         user: teacher,
-        requiresVerification: true
-      }
+        requiresVerification: true,
+      },
     });
-
   } catch (error) {
-    console.error('Teacher registration error:', error);
+    console.error("Teacher registration error:", error);
     handleRegistrationError(error, res);
   }
 };
@@ -206,18 +207,18 @@ const registerStudent = async (req, res) => {
       section,
       rollNumber,
       phone,
-      phoneNumber
+      phoneNumber,
     } = req.body;
 
     // If client sent a single `name`, split into firstName/lastName
-    if ((!firstName || !lastName) && name && typeof name === 'string') {
+    if ((!firstName || !lastName) && name && typeof name === "string") {
       const parts = name.trim().split(/\s+/);
-      firstName = firstName || parts.shift() || '';
-      lastName = lastName || parts.join(' ') || '';
+      firstName = firstName || parts.shift() || "";
+      lastName = lastName || parts.join(" ") || "";
     }
 
     // Coerce year when it's a string like '4th Year' -> 4
-    if (typeof year === 'string') {
+    if (typeof year === "string") {
       const m = year.match(/\d+/);
       if (m) {
         year = parseInt(m[0], 10);
@@ -225,7 +226,7 @@ const registerStudent = async (req, res) => {
     }
 
     // Coerce semester if string numeric
-    if (typeof semester === 'string' && /^\d+$/.test(semester)) {
+    if (typeof semester === "string" && /^\d+$/.test(semester)) {
       semester = parseInt(semester, 10);
     }
 
@@ -238,7 +239,7 @@ const registerStudent = async (req, res) => {
     if (!rollNumber || !/^\d{8,12}$/.test(rollNumber)) {
       return res.status(400).json({
         success: false,
-        message: 'Roll number must be 8-12 digits'
+        message: "Roll number must be 8-12 digits",
       });
     }
 
@@ -247,7 +248,8 @@ const registerStudent = async (req, res) => {
     if (!departmentExists) {
       return res.status(400).json({
         success: false,
-        message: 'This department does not exist. Please contact your department admin or select an existing department.'
+        message:
+          "This department does not exist. Please contact your department admin or select an existing department.",
       });
     }
 
@@ -256,7 +258,7 @@ const registerStudent = async (req, res) => {
     if (existingEmail) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: "User with this email already exists",
       });
     }
 
@@ -265,7 +267,7 @@ const registerStudent = async (req, res) => {
     if (existingRollNumber) {
       return res.status(400).json({
         success: false,
-        message: 'This roll number is already registered'
+        message: "This roll number is already registered",
       });
     }
 
@@ -285,8 +287,8 @@ const registerStudent = async (req, res) => {
       section,
       rollNumber,
       studentId,
-      role: 'student',
-      verified: false // Needs admin verification
+      role: "student",
+      verified: false, // Needs admin verification
     });
 
     await student.save();
@@ -295,15 +297,15 @@ const registerStudent = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'Student registered successfully. Please wait for admin verification before logging in.',
+      message:
+        "Student registered successfully. Please wait for admin verification before logging in.",
       data: {
         user: student,
-        requiresVerification: true
-      }
+        requiresVerification: true,
+      },
     });
-
   } catch (error) {
-    console.error('Student registration error:', error);
+    console.error("Student registration error:", error);
     handleRegistrationError(error, res);
   }
 };
@@ -314,19 +316,25 @@ const registerStudent = async (req, res) => {
  */
 const getDepartments = async (req, res) => {
   try {
-  console.log('GET /auth/departments - handler entered');
+    console.log("GET /auth/departments - handler entered");
     const departments = await User.getAllDepartments();
-  console.log('GET /auth/departments - fetched departments count:', Array.isArray(departments) ? departments.length : typeof departments);
+    console.log(
+      "GET /auth/departments - fetched departments count:",
+      Array.isArray(departments) ? departments.length : typeof departments,
+    );
     res.json({
       success: true,
-      data: { departments }
+      data: { departments },
     });
   } catch (error) {
-    console.error('Get departments error:', error && error.stack ? error.stack : error);
+    console.error(
+      "Get departments error:",
+      error && error.stack ? error.stack : error,
+    );
     // Defensive fallback: return empty departments array on transient DB errors
     return res.json({
       success: true,
-      data: { departments: [] }
+      data: { departments: [] },
     });
   }
 };
@@ -342,7 +350,7 @@ const loginStudent = async (req, res) => {
     if (!rollNumber || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Roll number and password are required'
+        message: "Roll number and password are required",
       });
     }
 
@@ -355,19 +363,18 @@ const loginStudent = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       data: {
         user,
         accessToken: token,
-        refreshToken
-      }
+        refreshToken,
+      },
     });
-
   } catch (error) {
-    console.error('Student login error:', error);
+    console.error("Student login error:", error);
     res.status(401).json({
       success: false,
-      message: error.message || 'Invalid roll number or password'
+      message: error.message || "Invalid roll number or password",
     });
   }
 };
@@ -380,22 +387,22 @@ const handleRegistrationError = (error, res) => {
     const field = Object.keys(error.keyPattern)[0];
     return res.status(400).json({
       success: false,
-      message: `${field} already exists`
+      message: `${field} already exists`,
     });
   }
 
-  if (error.name === 'ValidationError') {
-    const errors = Object.values(error.errors).map(err => err.message);
+  if (error.name === "ValidationError") {
+    const errors = Object.values(error.errors).map((err) => err.message);
     return res.status(400).json({
       success: false,
-      message: 'Validation error',
-      errors
+      message: "Validation error",
+      errors,
     });
   }
 
   res.status(500).json({
     success: false,
-    message: 'Internal server error during registration'
+    message: "Internal server error during registration",
   });
 };
 
@@ -415,7 +422,7 @@ const register = async (req, res) => {
       department,
       semester,
       studentId,
-      employeeId
+      employeeId,
     } = req.body;
 
     // Check if user already exists
@@ -423,7 +430,7 @@ const register = async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'User with this email already exists'
+        message: "User with this email already exists",
       });
     }
 
@@ -434,22 +441,25 @@ const register = async (req, res) => {
       email: email.toLowerCase(),
       password,
       phoneNumber,
-      role
+      role,
     };
 
     // Add role-specific fields
-    if (role === 'student') {
+    if (role === "student") {
       userData.department = department;
       userData.semester = semester;
-      
+
       // Generate student ID if not provided
       if (studentId) {
         // Check if student ID is already taken
-        const existingStudent = await User.findOne({ studentId, role: 'student' });
+        const existingStudent = await User.findOne({
+          studentId,
+          role: "student",
+        });
         if (existingStudent) {
           return res.status(400).json({
             success: false,
-            message: 'Student ID already exists'
+            message: "Student ID already exists",
           });
         }
         userData.studentId = studentId;
@@ -458,17 +468,20 @@ const register = async (req, res) => {
       }
     }
 
-    if (role === 'teacher') {
+    if (role === "teacher") {
       userData.department = department;
-      
+
       // Generate employee ID if not provided
       if (employeeId) {
         // Check if employee ID is already taken
-        const existingTeacher = await User.findOne({ employeeId, role: 'teacher' });
+        const existingTeacher = await User.findOne({
+          employeeId,
+          role: "teacher",
+        });
         if (existingTeacher) {
           return res.status(400).json({
             success: false,
-            message: 'Employee ID already exists'
+            message: "Employee ID already exists",
           });
         }
         userData.employeeId = employeeId;
@@ -490,37 +503,36 @@ const register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: "User registered successfully",
       data: {
         user,
         token,
-        refreshToken
-      }
+        refreshToken,
+      },
     });
-
   } catch (error) {
-    console.error('Registration error:', error);
-    
+    console.error("Registration error:", error);
+
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
       return res.status(400).json({
         success: false,
-        message: `${field} already exists`
+        message: `${field} already exists`,
       });
     }
 
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors
+        message: "Validation error",
+        errors,
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Internal server error during registration'
+      message: "Internal server error during registration",
     });
   }
 };
@@ -534,15 +546,15 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Defensive logging to help diagnose 500 errors seen by clients
-    console.debug('Login route hit - body:', {
+    console.debug("Login route hit - body:", {
       email: email || null,
-      passwordLength: password ? password.length : 0
+      passwordLength: password ? password.length : 0,
     });
 
     // Find user by credentials
     const user = await User.findByCredentials(email, password);
 
-    console.log('User found:', user.email, 'Role:', user.role);
+    console.log("User found:", user.email, "Role:", user.role);
 
     // Generate tokens
     const token = generateToken(user._id, user.role);
@@ -553,33 +565,35 @@ const login = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       data: {
         user,
         accessToken: token,
-        refreshToken
-      }
+        refreshToken,
+      },
     });
-
   } catch (error) {
     // Log full error including stack for diagnosis
-    console.error('Login error:', error);
-    console.error(error && error.stack ? error.stack : 'no stack available');
+    console.error("Login error:", error);
+    console.error(error && error.stack ? error.stack : "no stack available");
 
     // Return 500 with stack in development so client sees diagnostic info
     const statusCode = 500;
     const payload = {
       success: false,
-      message: error.message || 'Internal server error during login'
+      message: error.message || "Internal server error during login",
     };
 
-    if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === undefined) {
+    if (
+      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV === undefined
+    ) {
       payload.stack = error && error.stack ? error.stack : undefined;
       // Include a safe error summary to avoid circular JSON serialization
       payload.error = {
         name: error && error.name ? error.name : undefined,
         message: error && error.message ? error.message : undefined,
-        code: error && error.code ? error.code : undefined
+        code: error && error.code ? error.code : undefined,
       };
     }
 
@@ -594,24 +608,23 @@ const login = async (req, res) => {
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
     res.json({
       success: true,
-      data: { user }
+      data: { user },
     });
-
   } catch (error) {
-    console.error('Get me error:', error);
+    console.error("Get me error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch user profile'
+      message: "Failed to fetch user profile",
     });
   }
 };
@@ -622,16 +635,16 @@ const getMe = async (req, res) => {
  */
 const updateProfile = async (req, res) => {
   try {
-    const allowedUpdates = ['firstName', 'lastName', 'phoneNumber'];
-    
+    const allowedUpdates = ["firstName", "lastName", "phoneNumber"];
+
     // Add role-specific allowed updates
-    if (req.user.role === 'student') {
-      allowedUpdates.push('semester');
+    if (req.user.role === "student") {
+      allowedUpdates.push("semester");
     }
 
     // Filter out non-allowed updates
     const updates = {};
-    Object.keys(req.body).forEach(key => {
+    Object.keys(req.body).forEach((key) => {
       if (allowedUpdates.includes(key)) {
         updates[key] = req.body[key];
       }
@@ -640,37 +653,35 @@ const updateProfile = async (req, res) => {
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No valid updates provided'
+        message: "No valid updates provided",
       });
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      updates,
-      { new: true, runValidators: true }
-    );
+    const user = await User.findByIdAndUpdate(req.user._id, updates, {
+      new: true,
+      runValidators: true,
+    });
 
     res.json({
       success: true,
-      message: 'Profile updated successfully',
-      data: { user }
+      message: "Profile updated successfully",
+      data: { user },
     });
-
   } catch (error) {
-    console.error('Update profile error:', error);
-    
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
+    console.error("Update profile error:", error);
+
+    if (error.name === "ValidationError") {
+      const errors = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors
+        message: "Validation error",
+        errors,
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Failed to update profile'
+      message: "Failed to update profile",
     });
   }
 };
@@ -684,11 +695,11 @@ const changePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     // Get user with password field
-    const user = await User.findById(req.user._id).select('+password');
+    const user = await User.findById(req.user._id).select("+password");
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
@@ -697,7 +708,7 @@ const changePassword = async (req, res) => {
     if (!isCurrentPasswordValid) {
       return res.status(400).json({
         success: false,
-        message: 'Current password is incorrect'
+        message: "Current password is incorrect",
       });
     }
 
@@ -707,14 +718,13 @@ const changePassword = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Password changed successfully'
+      message: "Password changed successfully",
     });
-
   } catch (error) {
-    console.error('Change password error:', error);
+    console.error("Change password error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to change password'
+      message: "Failed to change password",
     });
   }
 };
@@ -730,18 +740,18 @@ const refreshToken = async (req, res) => {
     if (!refreshToken) {
       return res.status(400).json({
         success: false,
-        message: 'Refresh token is required'
+        message: "Refresh token is required",
       });
     }
 
     // Verify refresh token
-    const { verifyToken } = require('../middleware/auth');
+    const { verifyToken } = require("../middleware/auth");
     const decoded = await verifyToken(refreshToken);
 
-    if (decoded.type !== 'refresh') {
+    if (decoded.type !== "refresh") {
       return res.status(400).json({
         success: false,
-        message: 'Invalid refresh token type'
+        message: "Invalid refresh token type",
       });
     }
 
@@ -750,7 +760,7 @@ const refreshToken = async (req, res) => {
     if (!user || !user.isActive) {
       return res.status(401).json({
         success: false,
-        message: 'User not found or inactive'
+        message: "User not found or inactive",
       });
     }
 
@@ -760,18 +770,17 @@ const refreshToken = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Token refreshed successfully',
+      message: "Token refreshed successfully",
       data: {
         token: newToken,
-        refreshToken: newRefreshToken
-      }
+        refreshToken: newRefreshToken,
+      },
     });
-
   } catch (error) {
-    console.error('Refresh token error:', error);
+    console.error("Refresh token error:", error);
     res.status(401).json({
       success: false,
-      message: 'Invalid or expired refresh token'
+      message: "Invalid or expired refresh token",
     });
   }
 };
@@ -786,13 +795,13 @@ const logout = async (req, res) => {
     // For now, we'll just return a success response
     res.json({
       success: true,
-      message: 'Logged out successfully'
+      message: "Logged out successfully",
     });
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error("Logout error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to logout'
+      message: "Failed to logout",
     });
   }
 };
@@ -806,15 +815,15 @@ const getUserStats = async (req, res) => {
     const stats = await User.aggregate([
       {
         $group: {
-          _id: '$role',
-          count: { $sum: 1 }
-        }
-      }
+          _id: "$role",
+          count: { $sum: 1 },
+        },
+      },
     ]);
 
     const totalUsers = await User.countDocuments({ isActive: true });
     const recentUsers = await User.countDocuments({
-      createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
+      createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }, // Last 30 days
     });
 
     res.json({
@@ -823,15 +832,14 @@ const getUserStats = async (req, res) => {
         totalUsers,
         recentUsers,
         roleDistribution: stats,
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     });
-
   } catch (error) {
-    console.error('Get user stats error:', error);
+    console.error("Get user stats error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch user statistics'
+      message: "Failed to fetch user statistics",
     });
   }
 };
@@ -847,33 +855,32 @@ const deactivateUser = async (req, res) => {
 
     const user = await User.findByIdAndUpdate(
       id,
-      { 
+      {
         isActive: false,
         deactivatedAt: new Date(),
         deactivatedBy: req.user._id,
-        deactivationReason: reason
+        deactivationReason: reason,
       },
-      { new: true }
+      { new: true },
     );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
     res.json({
       success: true,
-      message: 'User account deactivated successfully',
-      data: { user }
+      message: "User account deactivated successfully",
+      data: { user },
     });
-
   } catch (error) {
-    console.error('Deactivate user error:', error);
+    console.error("Deactivate user error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to deactivate user account'
+      message: "Failed to deactivate user account",
     });
   }
 };
@@ -888,31 +895,30 @@ const reactivateUser = async (req, res) => {
 
     const user = await User.findByIdAndUpdate(
       id,
-      { 
+      {
         isActive: true,
-        $unset: { deactivatedAt: 1, deactivatedBy: 1, deactivationReason: 1 }
+        $unset: { deactivatedAt: 1, deactivatedBy: 1, deactivationReason: 1 },
       },
-      { new: true }
+      { new: true },
     );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
     res.json({
       success: true,
-      message: 'User account reactivated successfully',
-      data: { user }
+      message: "User account reactivated successfully",
+      data: { user },
     });
-
   } catch (error) {
-    console.error('Reactivate user error:', error);
+    console.error("Reactivate user error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to reactivate user account'
+      message: "Failed to reactivate user account",
     });
   }
 };
@@ -923,10 +929,10 @@ const reactivateUser = async (req, res) => {
  */
 const getUnverifiedUsers = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admins can access this endpoint'
+        message: "Only admins can access this endpoint",
       });
     }
 
@@ -934,17 +940,16 @@ const getUnverifiedUsers = async (req, res) => {
 
     res.json({
       success: true,
-      data: { 
+      data: {
         users: unverifiedUsers,
-        count: unverifiedUsers.length
-      }
+        count: unverifiedUsers.length,
+      },
     });
-
   } catch (error) {
-    console.error('Get unverified users error:', error);
+    console.error("Get unverified users error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch unverified users'
+      message: "Failed to fetch unverified users",
     });
   }
 };
@@ -955,23 +960,23 @@ const getUnverifiedUsers = async (req, res) => {
  */
 const verifyUser = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admins can verify users'
+        message: "Only admins can verify users",
       });
     }
 
-  // Route uses :id; accept either :id or legacy :userId for compatibility
-  const userId = req.params.id || req.params.userId;
+    // Route uses :id; accept either :id or legacy :userId for compatibility
+    const userId = req.params.id || req.params.userId;
 
-  // Get the user to verify
-  const userToVerify = await User.findById(userId);
-    
+    // Get the user to verify
+    const userToVerify = await User.findById(userId);
+
     if (!userToVerify) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
@@ -979,7 +984,7 @@ const verifyUser = async (req, res) => {
     if (userToVerify.department !== req.user.department) {
       return res.status(403).json({
         success: false,
-        message: 'You can only verify users in your department'
+        message: "You can only verify users in your department",
       });
     }
 
@@ -988,14 +993,13 @@ const verifyUser = async (req, res) => {
     res.json({
       success: true,
       message: `${verifiedUser.role} verified successfully`,
-      data: { user: verifiedUser }
+      data: { user: verifiedUser },
     });
-
   } catch (error) {
-    console.error('Verify user error:', error);
+    console.error("Verify user error:", error);
     res.status(500).json({
       success: false,
-      message: error.message || 'Failed to verify user'
+      message: error.message || "Failed to verify user",
     });
   }
 };
@@ -1006,48 +1010,49 @@ const verifyUser = async (req, res) => {
  */
 const getDepartmentUsers = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admins can access this endpoint'
+        message: "Only admins can access this endpoint",
       });
     }
 
     const { role, verified } = req.query;
-    const includeInactive = req.query.includeInactive === 'true';
+    const includeInactive = req.query.includeInactive === "true";
 
     const query = {
       department: req.user.department,
-      role: { $in: ['teacher', 'student'] }
+      role: { $in: ["teacher", "student"] },
     };
 
     if (!includeInactive) {
       query.isActive = true;
     }
 
-    if (role && ['teacher', 'student'].includes(role)) {
+    if (role && ["teacher", "student"].includes(role)) {
       query.role = role;
     }
 
     if (verified !== undefined) {
-      query.verified = verified === 'true';
+      query.verified = verified === "true";
     }
 
-    const users = await User.find(query).select('-password').sort({ createdAt: -1 });
+    const users = await User.find(query)
+      .select("-password")
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      data: { 
+      data: {
         users,
-        count: users.length
-      }
+        count: users.length,
+      },
     });
-
   } catch (error) {
-    console.error('Get department users error:', error);
+    console.error("Get department users error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch department users'
+      message: "Failed to fetch department users",
     });
   }
 };
@@ -1058,26 +1063,26 @@ const getDepartmentUsers = async (req, res) => {
  */
 const assignTeacher = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admins can assign teachers'
+        message: "Only admins can assign teachers",
       });
     }
 
     const { teacherId } = req.params;
     const { year, section } = req.body;
 
-    const teacher = await User.findOne({ 
-      _id: teacherId, 
-      role: 'teacher',
-      department: req.user.department 
+    const teacher = await User.findOne({
+      _id: teacherId,
+      role: "teacher",
+      department: req.user.department,
     });
 
     if (!teacher) {
       return res.status(404).json({
         success: false,
-        message: 'Teacher not found in your department'
+        message: "Teacher not found in your department",
       });
     }
 
@@ -1087,15 +1092,14 @@ const assignTeacher = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Teacher assigned successfully',
-      data: { teacher }
+      message: "Teacher assigned successfully",
+      data: { teacher },
     });
-
   } catch (error) {
-    console.error('Assign teacher error:', error);
+    console.error("Assign teacher error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to assign teacher'
+      message: "Failed to assign teacher",
     });
   }
 };
@@ -1110,23 +1114,22 @@ const assignTeacher = async (req, res) => {
  */
 const getAllAdmins = async (req, res) => {
   try {
-    const admins = await User.find({ role: 'admin' })
-      .select('-password')
+    const admins = await User.find({ role: "admin" })
+      .select("-password")
       .sort({ createdAt: -1 });
 
     res.json({
       success: true,
-      data: { 
+      data: {
         admins,
-        count: admins.length
-      }
+        count: admins.length,
+      },
     });
-
   } catch (error) {
-    console.error('Get all admins error:', error);
+    console.error("Get all admins error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch admins'
+      message: "Failed to fetch admins",
     });
   }
 };
@@ -1143,7 +1146,7 @@ const createAdmin = async (req, res) => {
     if (!name || !email || !password || !department) {
       return res.status(400).json({
         success: false,
-        message: 'Name, email, password, and department are required'
+        message: "Name, email, password, and department are required",
       });
     }
 
@@ -1152,7 +1155,7 @@ const createAdmin = async (req, res) => {
     if (existingEmail) {
       return res.status(400).json({
         success: false,
-        message: 'Email already registered'
+        message: "Email already registered",
       });
     }
 
@@ -1161,7 +1164,7 @@ const createAdmin = async (req, res) => {
     if (departmentExists) {
       return res.status(400).json({
         success: false,
-        message: `Department "${department}" already has an admin. Each department can only have one admin.`
+        message: `Department "${department}" already has an admin. Each department can only have one admin.`,
       });
     }
 
@@ -1173,9 +1176,9 @@ const createAdmin = async (req, res) => {
       department,
       phone,
       employeeId,
-      role: 'admin',
+      role: "admin",
       verified: true, // SuperAdmin-created admins are auto-verified
-      isActive: true
+      isActive: true,
     });
 
     await admin.save();
@@ -1187,14 +1190,13 @@ const createAdmin = async (req, res) => {
     res.status(201).json({
       success: true,
       message: `Admin created successfully for department "${department}"`,
-      data: { admin: adminResponse }
+      data: { admin: adminResponse },
     });
-
   } catch (error) {
-    console.error('Create admin error:', error);
+    console.error("Create admin error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to create admin'
+      message: "Failed to create admin",
     });
   }
 };
@@ -1207,12 +1209,12 @@ const deleteAdmin = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const admin = await User.findOne({ _id: id, role: 'admin' });
-    
+    const admin = await User.findOne({ _id: id, role: "admin" });
+
     if (!admin) {
       return res.status(404).json({
         success: false,
-        message: 'Admin not found'
+        message: "Admin not found",
       });
     }
 
@@ -1220,20 +1222,19 @@ const deleteAdmin = async (req, res) => {
     admin.isActive = false;
     admin.deactivatedAt = new Date();
     admin.deactivatedBy = req.user._id;
-    admin.deactivationReason = 'Removed by SuperAdmin';
+    admin.deactivationReason = "Removed by SuperAdmin";
     await admin.save();
 
     res.json({
       success: true,
       message: `Admin for department "${admin.department}" has been deactivated`,
-      data: { admin }
+      data: { admin },
     });
-
   } catch (error) {
-    console.error('Delete admin error:', error);
+    console.error("Delete admin error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete admin'
+      message: "Failed to delete admin",
     });
   }
 };
@@ -1245,10 +1246,10 @@ const deleteAdmin = async (req, res) => {
 const getAllUsers = async (req, res) => {
   try {
     const { role, department, verified, page = 1, limit = 50 } = req.query;
-    
-    const query = { role: { $ne: 'superadmin' } }; // Exclude superadmins
 
-    if (role && ['admin', 'teacher', 'student'].includes(role)) {
+    const query = { role: { $ne: "superadmin" } }; // Exclude superadmins
+
+    if (role && ["admin", "teacher", "student"].includes(role)) {
       query.role = role;
     }
 
@@ -1257,38 +1258,37 @@ const getAllUsers = async (req, res) => {
     }
 
     if (verified !== undefined) {
-      query.verified = verified === 'true';
+      query.verified = verified === "true";
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const [users, total] = await Promise.all([
       User.find(query)
-        .select('-password')
+        .select("-password")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
-      User.countDocuments(query)
+      User.countDocuments(query),
     ]);
 
     res.json({
       success: true,
-      data: { 
+      data: {
         users,
         pagination: {
           total,
           page: parseInt(page),
           limit: parseInt(limit),
-          pages: Math.ceil(total / parseInt(limit))
-        }
-      }
+          pages: Math.ceil(total / parseInt(limit)),
+        },
+      },
     });
-
   } catch (error) {
-    console.error('Get all users error:', error);
+    console.error("Get all users error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch users'
+      message: "Failed to fetch users",
     });
   }
 };
@@ -1305,14 +1305,14 @@ const getSystemStats = async (req, res) => {
       totalStudents,
       unverifiedTeachers,
       unverifiedStudents,
-      departments
+      departments,
     ] = await Promise.all([
-      User.countDocuments({ role: 'admin', isActive: true }),
-      User.countDocuments({ role: 'teacher', isActive: true }),
-      User.countDocuments({ role: 'student', isActive: true }),
-      User.countDocuments({ role: 'teacher', verified: false, isActive: true }),
-      User.countDocuments({ role: 'student', verified: false, isActive: true }),
-      User.getDistinctDepartments()
+      User.countDocuments({ role: "admin", isActive: true }),
+      User.countDocuments({ role: "teacher", isActive: true }),
+      User.countDocuments({ role: "student", isActive: true }),
+      User.countDocuments({ role: "teacher", verified: false, isActive: true }),
+      User.countDocuments({ role: "student", verified: false, isActive: true }),
+      User.getAllDepartments(),
     ]);
 
     res.json({
@@ -1324,17 +1324,16 @@ const getSystemStats = async (req, res) => {
           totalStudents,
           unverifiedTeachers,
           unverifiedStudents,
-          totalDepartments: departments.length
+          totalDepartments: departments.length,
         },
-        departments
-      }
+        departments,
+      },
     });
-
   } catch (error) {
-    console.error('Get system stats error:', error);
+    console.error("Get system stats error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch system statistics'
+      message: "Failed to fetch system statistics",
     });
   }
 };
@@ -1345,38 +1344,48 @@ const getSystemStats = async (req, res) => {
  */
 const rejectUser = async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admins can reject users'
+        message: "Only admins can reject users",
       });
     }
 
-  // Route uses :id; accept either :id or legacy :userId for compatibility
-  const userId = req.params.id || req.params.userId;
-  const { reason } = req.body;
+    // Route uses :id; accept either :id or legacy :userId for compatibility
+    const userId = req.params.id || req.params.userId;
+    const { reason } = req.body;
 
-  const userToReject = await User.findById(userId);
+    const userToReject = await User.findById(userId);
     if (!userToReject) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     if (userToReject.department !== req.user.department) {
-      return res.status(403).json({ success: false, message: 'You can only reject users in your department' });
+      return res
+        .status(403)
+        .json({
+          success: false,
+          message: "You can only reject users in your department",
+        });
     }
 
     // Soft-reject the user
     userToReject.isActive = false;
     userToReject.deactivatedAt = new Date();
     userToReject.deactivatedBy = req.user._id;
-    userToReject.deactivationReason = reason || 'Rejected by admin';
+    userToReject.deactivationReason = reason || "Rejected by admin";
     await userToReject.save();
 
-    res.json({ success: true, message: 'User rejected successfully', data: { user: userToReject } });
-
+    res.json({
+      success: true,
+      message: "User rejected successfully",
+      data: { user: userToReject },
+    });
   } catch (error) {
-    console.error('Reject user error:', error);
-    res.status(500).json({ success: false, message: 'Failed to reject user' });
+    console.error("Reject user error:", error);
+    res.status(500).json({ success: false, message: "Failed to reject user" });
   }
 };
 
@@ -1405,7 +1414,6 @@ module.exports = {
   createAdmin,
   deleteAdmin,
   getAllUsers,
-  getSystemStats
-  ,
-  rejectUser
+  getSystemStats,
+  rejectUser,
 };
