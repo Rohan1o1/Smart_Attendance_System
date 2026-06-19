@@ -342,14 +342,16 @@ const dateRangeSchema = Joi.object({
     })
 });
 
-// ID parameter schema
+// ID parameter schema - accept either `id` or `studentId` for routes that use different param names
+const idPattern = Joi.string()
+  .pattern(/^[0-9a-fA-F]{24}$/)
+  .messages({ 'string.pattern.base': 'Invalid ID format' });
+
 const idParameterSchema = Joi.object({
-  id: Joi.string()
-    .pattern(/^[0-9a-fA-F]{24}$/)
-    .required()
-    .messages({
-      'string.pattern.base': 'Invalid ID format'
-    })
+  id: idPattern.optional(),
+  studentId: idPattern.optional()
+}).or('id', 'studentId').messages({
+  'object.missing': 'id is required'
 });
 
 // Student enrollment schema

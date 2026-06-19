@@ -34,8 +34,8 @@ const StudentDashboard = () => {
     let mounted = true;
     const fetchStats = async () => {
       try {
-        // attendanceAPI.getStats returns overallStatistics and other metadata
-        const { data } = await attendanceAPI.getStats({ studentId: user?._id });
+  // Use student-scoped endpoint to fetch stats for this student
+  const { data } = await attendanceAPI.getStudentStats(user?._id);
         // Try to map the response shape to the local UI model
         const overall = data?.overallStatistics || {};
         const thisWeek = data?.dailyTrends ? data.dailyTrends.slice(-7) : [];

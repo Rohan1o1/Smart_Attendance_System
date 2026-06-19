@@ -863,6 +863,18 @@ export const attendanceAPI = {
   },
 
   /**
+   * Get attendance statistics for a specific student (student-scoped)
+   */
+  getStudentStats: async (studentId, params = {}) => {
+    try {
+      const response = await apiClient.get(`/attendance/student/${studentId}`, { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
    * Get attendance statistics for the authenticated teacher
    */
   getTeacherStats: async (params = {}) => {

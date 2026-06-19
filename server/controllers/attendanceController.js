@@ -399,7 +399,8 @@ const submitAttendance = async (req, res) => {
  */
 const getStudentAttendance = async (req, res) => {
   try {
-    const { studentId } = req.params;
+    // Accept either :studentId or legacy :id parameter
+    const studentId = req.params.studentId || req.params.id;
     const { page = 1, limit = 10, classId, startDate, endDate, status } = req.query;
 
     // Authorization check

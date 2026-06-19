@@ -2,6 +2,7 @@ const Class = require('../models/Class');
 const User = require('../models/User');
 const { locationService } = require('../services');
 const config = require('../config');
+const mongoose = require('mongoose');
 
 /**
  * Class Controller
@@ -168,13 +169,24 @@ const getEnrolledClasses = async (req, res) => {
     const studentId = req.user._id;
 
     // First try to find classes where the student is explicitly enrolled
+    // Be defensive: enrolledStudents.studentId may be stored as ObjectId or string
+    const tryObjectId = (() => {
+      try { return mongoose.Types.ObjectId(studentId); } catch (e) { return null; }
+    })();
+
+    const orConditions = [];
+    if (tryObjectId) orConditions.push({ 'enrolledStudents.studentId': tryObjectId });
+    orConditions.push({ 'enrolledStudents.studentId': String(studentId) });
+
     let classes = await Class.find({
-      'enrolledStudents.studentId': studentId,
+      isActive: true,
       'enrolledStudents.status': 'enrolled',
-      isActive: true
+      $or: orConditions
     })
     .populate('teacherId', 'firstName lastName email employeeId')
     .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+
+    console.debug(`getEnrolledClasses: studentId=${studentId} matched explicit enrollments: ${classes.length}`);
 
     // If no enrolled classes found, or the client requested a department/semester/section filter,
     // return classes that match the student's assignment (department/semester/section).
