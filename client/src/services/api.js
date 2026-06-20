@@ -690,6 +690,27 @@ export const classAPI = {
   },
 
   /**
+   * Get admin routine classes
+   */
+  getAdminRoutines: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/class/admin/routines', { params });
+      return handleResponse(response);
+    } catch (error) {
+      const message = error.response?.data?.message || error.message || '';
+      if (error.response?.status === 404 || message.includes('Route /api/class/admin/routines not found')) {
+        try {
+          const fallbackResponse = await apiClient.get('/class/active', { params });
+          return handleResponse(fallbackResponse);
+        } catch (fallbackError) {
+          throw handleError(fallbackError);
+        }
+      }
+      throw handleError(error);
+    }
+  },
+
+  /**
    * Get class by ID
    */
   getClass: async (id) => {

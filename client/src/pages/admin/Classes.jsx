@@ -16,7 +16,8 @@ const emptyForm = {
   geofenceRadius: 20,
   classroom: '',
   description: '',
-  teacherId: ''
+  teacherId: '',
+  section: 'A'
 };
 
 const ClassesPage = () => {
@@ -32,6 +33,16 @@ const ClassesPage = () => {
     fetchTeachers();
     fetchClasses();
   }, []);
+
+  useEffect(() => {
+    if (user?.role === 'admin' && user.department) {
+      setForm((current) => ({
+        ...current,
+        department: current.department || user.department,
+        section: current.section || 'A'
+      }));
+    }
+  }, [user]);
 
   const fetchTeachers = async () => {
     setLoading(true);
@@ -56,7 +67,9 @@ const ClassesPage = () => {
     try {
       // Try teacher endpoint when client thinks user is teacher; fallback to active classes on 403
       let res;
-      if (user && user.role === 'teacher') {
+      if (user && user.role === 'admin') {
+        res = await classAPI.getAdminRoutines();
+      } else if (user && user.role === 'teacher') {
         try {
           res = await classAPI.getMyClasses({ page: 1, limit: 100 });
         } catch (err) {
@@ -146,9 +159,10 @@ const ClassesPage = () => {
       const payload = {
         subject: form.subject,
         subjectCode: (form.subjectCode || '').toUpperCase(),
-        department: form.department,
+        department: form.department || user?.department || '',
         semester: semesterNum || 1,
         academicYear: form.academicYear && /\d{4}-\d{4}/.test(form.academicYear) ? form.academicYear : defaultAcademicYear,
+        section: form.section ? String(form.section).toUpperCase() : undefined,
         // send computed schedule with duration
         schedule: scheduleObj,
         geofenceRadius: form.geofenceRadius || 20,
@@ -170,7 +184,7 @@ const ClassesPage = () => {
         console.debug('Update class response', res);
         if (res.success) {
           await fetchClasses();
-          setForm(emptyForm);
+          setForm({ ...emptyForm, department: user?.department || '', section: 'A' });
           setEditingId(null);
         } else {
           setError(res.errors || res.message || 'Failed to update class');
@@ -180,7 +194,7 @@ const ClassesPage = () => {
         console.debug('Create class response', res);
         if (res.success) {
           await fetchClasses();
-          setForm(emptyForm);
+          setForm({ ...emptyForm, department: user?.department || '', section: 'A' });
         } else {
           setError(res.errors || res.message || 'Failed to create class');
         }
@@ -202,6 +216,7 @@ const ClassesPage = () => {
       department: cls.department || '',
   semester: cls.semester || '',
   academicYear: cls.academicYear || '',
+  section: cls.section || '',
   schedule: cls.schedule || [],
   scheduleDay: cls.schedule?.dayOfWeek || (cls.schedule && cls.schedule[0]?.dayOfWeek) || 'Monday',
   scheduleStartTime: cls.schedule?.startTime || (cls.schedule && cls.schedule[0]?.startTime) || '09:00',
@@ -297,7 +312,7 @@ const ClassesPage = () => {
 
             <div className="flex items-center space-x-2">
               <button type="submit" className="btn btn-primary" disabled={loading}>{editingId ? 'Update' : 'Create'}</button>
-              {editingId && <button type="button" onClick={() => { setEditingId(null); setForm(emptyForm); }} className="btn">Cancel</button>}
+              {editingId && <button type="button" onClick={() => { setEditingId(null); setForm({ ...emptyForm, department: user?.department || '', section: 'A' }); }} className="btn">Cancel</button>}
             </div>
 
             {error && <div className="text-red-600">{error}</div>}

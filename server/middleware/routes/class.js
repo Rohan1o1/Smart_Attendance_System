@@ -54,6 +54,16 @@ router.get(
 // @access  Private
 router.get("/active", authenticate, classController.getActiveClasses);
 
+// @route   GET /class/admin/routines
+// @desc    Get admin routines
+// @access  Private (Admin)
+router.get(
+  "/admin/routines",
+  authenticate,
+  authorize("admin"),
+  classController.getAdminRoutines,
+);
+
 // @route   GET /class/:id
 // @desc    Get class details
 // @access  Private

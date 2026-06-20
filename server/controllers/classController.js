@@ -3,6 +3,8 @@ const User = require('../models/User');
 const { locationService } = require('../services');
 const config = require('../config');
 
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Class Controller
  * Handles class creation, session management, and enrollment
@@ -20,19 +22,12 @@ const createClass = async (req, res) => {
       department,
       semester,
       academicYear,
+      section,
       schedule,
       geofenceRadius,
       classroom,
       description
     } = req.body;
-
-    // Determine teacher for the class
-    let teacherId = req.user._id;
-
-    // If admin is creating the class, allow specifying teacherId in body
-    if (req.user.role === 'admin' && req.body.teacherId) {
-      teacherId = req.body.teacherId;
-    }
 
     // Only teachers or admins may create classes
     if (!['teacher', 'admin'].includes(req.user.role)) {
@@ -40,6 +35,38 @@ const createClass = async (req, res) => {
         success: false,
         message: 'Only teachers or admins can create classes'
       });
+    }
+
+    // Determine teacher and department for the class
+    let teacherId = req.user._id;
+    let classDepartment = department;
+    let teacherName = `${req.user.firstName} ${req.user.lastName}`;
+
+    if (req.user.role === 'admin') {
+      if (!req.body.teacherId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please select a teacher for this class'
+        });
+      }
+
+      const teacher = await User.findOne({
+        _id: req.body.teacherId,
+        role: 'teacher',
+        department: req.user.department,
+        isActive: true
+      });
+
+      if (!teacher) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected teacher was not found in your department'
+        });
+      }
+
+      teacherId = teacher._id;
+      teacherName = `${teacher.firstName} ${teacher.lastName}`;
+      classDepartment = req.user.department;
     }
 
     // Generate class ID
@@ -51,10 +78,11 @@ const createClass = async (req, res) => {
       subject,
       subjectCode: subjectCode.toUpperCase(),
       teacherId,
-      teacherName: `${req.user.firstName} ${req.user.lastName}`,
-      department,
+      teacherName,
+      department: classDepartment,
       semester,
       academicYear,
+      section: section ? String(section).toUpperCase() : undefined,
       schedule,
       geofenceRadius: geofenceRadius || 20,
       classroom,
@@ -366,6 +394,54 @@ const getActiveClasses = async (req, res) => {
 };
 
 /**
+ * Get classes for admin routine view
+ * GET /class/admin/routines
+ */
+const getAdminRoutines = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can access routines'
+      });
+    }
+
+    const { semester, section } = req.query;
+    const query = { isActive: true };
+    const departmentTeachers = await User.find({
+      role: 'teacher',
+      department: req.user.department,
+      isActive: true
+    }).select('_id');
+    const teacherIds = departmentTeachers.map((teacher) => teacher._id);
+
+    if (req.user.department) {
+      query.$or = [
+        { department: new RegExp(`^${escapeRegExp(req.user.department)}$`, 'i') },
+        { teacherId: { $in: teacherIds } }
+      ];
+    }
+    if (semester) query.semester = parseInt(semester, 10);
+    if (section) query.section = String(section).toUpperCase();
+
+    const classes = await Class.find(query)
+      .populate('teacherId', 'firstName lastName email employeeId')
+      .sort({ academicYear: -1, semester: 1, 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+
+    res.json({
+      success: true,
+      data: { classes }
+    });
+  } catch (error) {
+    console.error('Get admin routines error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch routines'
+    });
+  }
+};
+
+/**
  * Enroll students in class
  * POST /class/:id/enroll
  */
@@ -496,18 +572,53 @@ const updateClass = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-    const teacherId = req.user._id;
 
     // Remove fields that shouldn't be updated directly
-    const restrictedFields = ['classId', 'teacherId', 'teacherName', 'createdBy', 'statistics'];
+    const restrictedFields = ['classId', 'teacherName', 'createdBy', 'statistics'];
     restrictedFields.forEach(field => delete updates[field]);
 
-    const classObj = await Class.findOneAndUpdate(
-      {
-        _id: id,
-        teacherId,
+    const query = {
+      _id: id,
+      isActive: true
+    };
+
+    if (req.user.role === 'teacher') {
+      query.teacherId = req.user._id;
+      delete updates.teacherId;
+    } else if (req.user.role === 'admin') {
+      const departmentTeachers = await User.find({
+        role: 'teacher',
+        department: req.user.department,
         isActive: true
-      },
+      }).select('_id');
+      const teacherIds = departmentTeachers.map((teacher) => teacher._id);
+
+      query.$or = [
+        { department: new RegExp(`^${escapeRegExp(req.user.department)}$`, 'i') },
+        { teacherId: { $in: teacherIds } }
+      ];
+
+      if (updates.teacherId) {
+        const teacher = await User.findOne({
+          _id: updates.teacherId,
+          role: 'teacher',
+          department: req.user.department,
+          isActive: true
+        });
+
+        if (!teacher) {
+          return res.status(400).json({
+            success: false,
+            message: 'Selected teacher was not found in your department'
+          });
+        }
+
+        updates.teacherName = `${teacher.firstName} ${teacher.lastName}`;
+      }
+    }
+
+    const classObj = await Class.findOneAndUpdate(
+      query,
       updates,
       {
         new: true,
@@ -639,6 +750,7 @@ module.exports = {
   startClassSession,
   endClassSession,
   getActiveClasses,
+  getAdminRoutines,
   enrollStudents,
   dropStudent,
   updateClass,

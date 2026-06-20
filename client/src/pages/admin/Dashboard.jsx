@@ -3,47 +3,68 @@
  * Main dashboard for admin users
  */
 
+import { useEffect, useMemo, useState } from 'react';
 import { 
   Users, 
   BookOpen, 
-  UserCheck, 
-  Settings, 
+  Clock,
+  CalendarCheck,
   BarChart3,
-  Shield,
-  Database,
   AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { api, attendanceAPI, classAPI } from '../../services/api';
 
 const AdminDashboard = () => {
   const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [dashboardStats, setDashboardStats] = useState({
+    totalUsers: '—',
+    activeClasses: '—',
+    todayAttendance: '—',
+    attendanceRate: '—'
+  });
 
-  const stats = [
-    {
-      title: 'Total Users',
-      value: '458',
-      icon: Users,
-      color: 'text-primary-600 bg-primary-100'
-    },
-    {
-      title: 'Active Classes',
-      value: '24',
-      icon: BookOpen,
-      color: 'text-success-600 bg-success-100'
-    },
-    {
-      title: 'System Uptime',
-      value: '99.9%',
-      icon: Shield,
-      color: 'text-warning-600 bg-warning-100'
-    },
-    {
-      title: 'Data Storage',
-      value: '2.4GB',
-      icon: Database,
-      color: 'text-secondary-600 bg-secondary-100'
-    }
-  ];
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        const [userStats, attendanceStats, activeClasses] = await Promise.all([
+          api.get('/auth/stats'),
+          attendanceAPI.getStats(),
+          classAPI.getActiveClasses()
+        ]);
+
+        if (!mounted) return;
+
+        const overall = attendanceStats.data?.overallStatistics || {};
+        setDashboardStats({
+          totalUsers: userStats.data?.totalUsers ?? '—',
+          activeClasses: activeClasses.data?.classes?.length ?? 0,
+          todayAttendance: (overall.presentCount || 0) + (overall.lateCount || 0),
+          attendanceRate: overall.attendanceRate != null ? `${overall.attendanceRate}%` : '—'
+        });
+      } catch (error) {
+        console.error('Failed to load admin dashboard data', error);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const stats = useMemo(() => ([
+    { title: 'Total Users', value: dashboardStats.totalUsers, icon: Users, color: 'text-primary-600 bg-primary-100' },
+    { title: 'Active Classes', value: loading ? 'Loading...' : dashboardStats.activeClasses, icon: BookOpen, color: 'text-success-600 bg-success-100' },
+    { title: "Today's Attendance", value: loading ? 'Loading...' : dashboardStats.todayAttendance, icon: CalendarCheck, color: 'text-warning-600 bg-warning-100' },
+    { title: 'Attendance Rate', value: loading ? 'Loading...' : dashboardStats.attendanceRate, icon: Clock, color: 'text-secondary-600 bg-secondary-100' }
+  ]), [dashboardStats, loading]);
 
   return (
     <div className="space-y-6">
@@ -58,7 +79,7 @@ const AdminDashboard = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (
@@ -104,25 +125,11 @@ const AdminDashboard = () => {
           <p className="text-secondary-600 mb-4 text-sm">
             View comprehensive system analytics
           </p>
-          <button className="btn btn-secondary btn-sm">
+          <button className="btn btn-secondary btn-sm" onClick={() => window.location.href = '/admin/analytics'}>
             View Analytics
           </button>
         </div>
 
-        <div className="card card-hover p-6 text-center">
-          <div className="w-16 h-16 bg-warning-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Settings className="w-8 h-8 text-warning-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-secondary-900 mb-2">
-            System Settings
-          </h3>
-          <p className="text-secondary-600 mb-4 text-sm">
-            Configure system parameters and settings
-          </p>
-          <button className="btn btn-secondary btn-sm">
-            Configure
-          </button>
-        </div>
       </div>
 
       {/* System Status */}

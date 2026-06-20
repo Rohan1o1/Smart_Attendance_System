@@ -202,6 +202,16 @@ const classCreationSchema = Joi.object({
       'string.pattern.base': 'Academic year must be in format YYYY-YYYY (e.g., 2023-2024)'
     }),
 
+  section: Joi.string()
+    .trim()
+    .uppercase()
+    .valid('A', 'B')
+    .optional(),
+
+  teacherId: Joi.string()
+    .trim()
+    .optional(),
+
   schedule: Joi.object({
     dayOfWeek: Joi.string()
       .valid('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday')
@@ -219,7 +229,12 @@ const classCreationSchema = Joi.object({
       .required()
       .messages({
         'string.pattern.base': 'End time must be in HH:MM format'
-      })
+      }),
+
+    duration: Joi.number()
+      .integer()
+      .min(1)
+      .optional()
   }).required(),
 
   geofenceRadius: Joi.number()
