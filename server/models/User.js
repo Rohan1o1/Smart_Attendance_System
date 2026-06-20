@@ -169,6 +169,25 @@ const userSchema = new mongoose.Schema({
     }
   },
 
+  assignedYear: {
+    type: Number,
+    min: 1,
+    max: 4
+  },
+
+  assignedSemester: {
+    type: Number,
+    min: 1,
+    max: 8
+  },
+
+  assignedSection: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    maxlength: [10, 'Assigned section cannot exceed 10 characters']
+  },
+
   // Admin-specific fields - adminId (8-12 digits)
   adminId: {
     type: String,

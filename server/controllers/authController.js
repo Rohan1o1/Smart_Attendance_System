@@ -1071,7 +1071,7 @@ const assignTeacher = async (req, res) => {
     }
 
     const { teacherId } = req.params;
-    const { year, section } = req.body;
+    const { year, semester, section } = req.body;
 
     const teacher = await User.findOne({
       _id: teacherId,
@@ -1087,7 +1087,8 @@ const assignTeacher = async (req, res) => {
     }
 
     teacher.assignedYear = year;
-    teacher.assignedSection = section;
+    teacher.assignedSemester = semester;
+    teacher.assignedSection = section ? String(section).trim().toUpperCase() : undefined;
     await teacher.save();
 
     res.json({

@@ -23,7 +23,7 @@ const {
 } = require("./middleware");
 
 // Import routes
-const routes = require('./routes');
+const routes = require("./middleware/routes");
 
 /**
  * Express Application Setup
@@ -195,7 +195,27 @@ class App {
       // Connect to database
       console.log("🔗 Connecting to database...");
       if (config.server.env === "development") {
-        await dbConnection.connectWithRetry();
+        try {
+          const dbConnectPromise = dbConnection.connect();
+          dbConnectPromise.catch(() => {});
+
+          await Promise.race([
+            dbConnectPromise,
+            new Promise((_, reject) => {
+              setTimeout(
+                () => reject(new Error("Database connection timed out during startup")),
+                6000,
+              );
+            }),
+          ]);
+        } catch (error) {
+          console.warn(
+            "⚠️  Development mode: starting API without a database connection.",
+          );
+          console.warn(
+            "⚠️  DB-backed routes will fail until MONGODB_URI is reachable.",
+          );
+        }
       } else {
         await dbConnection.connect();
       }

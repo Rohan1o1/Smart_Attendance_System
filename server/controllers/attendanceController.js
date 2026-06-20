@@ -64,16 +64,18 @@ const submitAttendance = async (req, res) => {
     if (isEnrolled) {
       permittedToMark = true;
     } else {
-      // Check department/semester/section match
+      // Check department/year/semester/section match
       const studentDept = student.department;
       const studentSem = student.semester;
+      const studentYear = student.year || (studentSem ? Math.ceil(Number(studentSem) / 2) : undefined);
       const studentSection = student.section;
 
       const deptMatch = !classObj.department || (studentDept && String(classObj.department) === String(studentDept));
       const semMatch = !classObj.semester || (studentSem && parseInt(classObj.semester) === parseInt(studentSem));
-      const sectionMatch = !classObj.section || (studentSection && String(classObj.section) === String(studentSection));
+      const yearMatch = !classObj.year || (studentYear && parseInt(classObj.year) === parseInt(studentYear));
+      const sectionMatch = !classObj.section || (studentSection && String(classObj.section).trim().toUpperCase() === String(studentSection).trim().toUpperCase());
 
-      if (deptMatch && semMatch && sectionMatch) {
+      if (deptMatch && semMatch && yearMatch && sectionMatch) {
         permittedToMark = true;
       }
     }
@@ -240,7 +242,7 @@ const submitAttendance = async (req, res) => {
 
       // Extract face embedding and perform liveness check
       const embeddingResult = await faceRecognitionService.extractFaceEmbedding(faceImage);
-      
+
       // Check if face extraction was successful
       if (!embeddingResult.success) {
         console.log('❌ Face extraction failed:', embeddingResult.error);
@@ -249,16 +251,16 @@ const submitAttendance = async (req, res) => {
           `Face verification failed: ${embeddingResult.error}`,
           'high'
         );
-        
+
         // Set face verification to false and continue with other checks
         verificationResults.faceVerified = false;
-        
+
         // Note: Not adding suggestions flag as it's not a valid enum type
         // The error message is already captured in the face_mismatch flag above
       } else {
         // Face extraction successful, proceed with matching
         console.log('✅ Face extraction successful, proceeding with matching');
-        
+
         // Extract actual embedding arrays from stored face embedding objects
         // Stored format: { embedding: [...], imageUrl: '...', createdAt: '...' }
         const storedEmbeddingArrays = userWithFaces.faceEmbeddings.map(fe => {
@@ -272,9 +274,9 @@ const submitAttendance = async (req, res) => {
             return null;
           }
         }).filter(e => e !== null);
-        
+
         console.log(`📊 Found ${storedEmbeddingArrays.length} valid stored embeddings for comparison`);
-        
+
         // Compare with registered faces (findBestMatch is async)
         const matchResult = await faceRecognitionService.findBestMatch(
           embeddingResult.embedding,
@@ -290,7 +292,7 @@ const submitAttendance = async (req, res) => {
           matchResult.bestSimilarity,
           embeddingResult.livenessCheck
         );
-        
+
         // Add detailed logs for face verification result
         if (verificationResults.faceVerified) {
           console.log('✅ Face verification passed');
@@ -343,11 +345,11 @@ const submitAttendance = async (req, res) => {
     }
 
     // Determine final status based on verifications
-    const allVerified = verificationResults.locationVerified && 
-                       verificationResults.faceVerified && 
+    const allVerified = verificationResults.locationVerified &&
+                       verificationResults.faceVerified &&
                        verificationResults.timeVerified;
 
-    const hasHighSeverityFlags = attendance.flags.some(flag => 
+    const hasHighSeverityFlags = attendance.flags.some(flag =>
       ['high', 'critical'].includes(flag.severity)
     );
 
@@ -500,12 +502,12 @@ const getClassAttendance = async (req, res) => {
 
     // Build query
     const query = { classId, isActive: true };
-    
+
     if (date) {
       const targetDate = new Date(date);
       const nextDay = new Date(targetDate);
       nextDay.setDate(nextDay.getDate() + 1);
-      
+
       query.timestamp = {
         $gte: targetDate,
         $lt: nextDay
@@ -607,7 +609,7 @@ const updateAttendance = async (req, res) => {
     }
 
     // Authorization check
-    if (userRole === 'teacher' && 
+    if (userRole === 'teacher' &&
         attendance.classId.teacherId.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
@@ -622,7 +624,7 @@ const updateAttendance = async (req, res) => {
     const updates = {};
     if (status && ['present', 'late', 'absent', 'excused'].includes(status)) {
       updates.status = status;
-      
+
       // Track manual override
       if (originalStatus !== status) {
         updates.manualOverride = {
@@ -690,26 +692,26 @@ const getAttendanceStats = async (req, res) => {
     const dailyTrends = await Attendance.aggregate([
       {
         $match: {
-          timestamp: { 
-            $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) 
+          timestamp: {
+            $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
           },
           isActive: true
         }
       },
       {
         $group: {
-          _id: { 
-            $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } 
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$timestamp" }
           },
           totalRecords: { $sum: 1 },
-          presentCount: { 
-            $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } 
+          presentCount: {
+            $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] }
           },
-          lateCount: { 
-            $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] } 
+          lateCount: {
+            $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] }
           },
-          flaggedCount: { 
-            $sum: { $cond: [{ $eq: ["$status", "flagged"] }, 1, 0] } 
+          flaggedCount: {
+            $sum: { $cond: [{ $eq: ["$status", "flagged"] }, 1, 0] }
           }
         }
       },
@@ -723,11 +725,11 @@ const getAttendanceStats = async (req, res) => {
         $group: {
           _id: "$department",
           totalRecords: { $sum: 1 },
-          presentCount: { 
-            $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] } 
+          presentCount: {
+            $sum: { $cond: [{ $eq: ["$status", "present"] }, 1, 0] }
           },
-          lateCount: { 
-            $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] } 
+          lateCount: {
+            $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] }
           },
           attendanceRate: {
             $avg: {

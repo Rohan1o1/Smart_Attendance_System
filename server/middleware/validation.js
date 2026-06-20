@@ -195,6 +195,25 @@ const classCreationSchema = Joi.object({
     .max(8)
     .required(),
 
+  year: Joi.number()
+    .integer()
+    .min(1)
+    .max(4)
+    .optional(),
+
+  section: Joi.string()
+    .trim()
+    .uppercase()
+    .max(10)
+    .optional(),
+
+  teacherId: Joi.string()
+    .pattern(/^[0-9a-fA-F]{24}$/)
+    .optional()
+    .messages({
+      'string.pattern.base': 'Invalid teacher ID format'
+    }),
+
   academicYear: Joi.string()
     .pattern(/^\d{4}-\d{4}$/)
     .required()

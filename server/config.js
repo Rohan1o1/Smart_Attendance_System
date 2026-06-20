@@ -29,6 +29,7 @@ const config = {
       maxPoolSize: 10,
       connectTimeoutMS: 30000,
       socketTimeoutMS: 30000,
+      serverSelectionTimeoutMS: 5000,
     }
   },
 
