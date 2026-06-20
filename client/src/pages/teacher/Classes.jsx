@@ -3,7 +3,7 @@
  * Manage classes and start attendance sessions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BookOpen, 
   Calendar, 
@@ -21,6 +21,50 @@ import { useAuth } from '../../context/AuthContext';
 import { classAPI } from '../../services/api';
 import { toast } from 'react-hot-toast';
 
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SLOT_MINUTES = 30;
+const SCHEDULE_START_MINUTES = 9 * 60;
+const SCHEDULE_END_MINUTES = 17 * 60;
+
+function toMinutes(time) {
+  const [hours, minutes] = String(time).split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+}
+
+function fromMinutes(minutes) {
+  const boundedMinutes = Math.max(0, Math.min(minutes, 23 * 60 + 59));
+  const hours = Math.floor(boundedMinutes / 60);
+  const mins = boundedMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
+const TIME_SLOTS = Array.from(
+  { length: (SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES },
+  (_, index) => fromMinutes(SCHEDULE_START_MINUTES + index * SLOT_MINUTES)
+);
+const BREAK_SLOTS = new Set(['12:00']);
+const DEFAULT_DURATION_MINUTES = 60;
+const colorClasses = [
+  'border-blue-200 bg-blue-50 text-blue-900',
+  'border-emerald-200 bg-emerald-50 text-emerald-900',
+  'border-amber-200 bg-amber-50 text-amber-900',
+  'border-rose-200 bg-rose-50 text-rose-900',
+  'border-violet-200 bg-violet-50 text-violet-900',
+  'border-cyan-200 bg-cyan-50 text-cyan-900'
+];
+
+const getClassId = (classItem) => classItem?._id || classItem?.id;
+
+const getClassDuration = (classItem) => {
+  const duration = Number(classItem?.schedule?.duration);
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  const start = toMinutes(classItem?.schedule?.startTime);
+  const end = toMinutes(classItem?.schedule?.endTime);
+  return Math.max(SLOT_MINUTES, end - start || DEFAULT_DURATION_MINUTES);
+};
+
+const getClassEndTime = (classItem) => fromMinutes(toMinutes(classItem?.schedule?.startTime) + getClassDuration(classItem));
+
 const TeacherClasses = () => {
   const { user } = useAuth();
   const [classes, setClasses] = useState([]);
@@ -28,6 +72,29 @@ const TeacherClasses = () => {
   const [error, setError] = useState(null);
   const [activeSession, setActiveSession] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+  const [viewMode, setViewMode] = useState('list');
+
+  const subjectColorMap = useMemo(() => {
+    const map = new Map();
+    classes.forEach((item) => {
+      const key = item.subjectCode || item.subject;
+      if (key && !map.has(key)) {
+        map.set(key, colorClasses[map.size % colorClasses.length]);
+      }
+    });
+    return map;
+  }, [classes]);
+
+  const getOccupyingClass = (day, time) => {
+    const slotMin = toMinutes(time);
+    return classes.find((c) => {
+      if (c.schedule?.dayOfWeek !== day) return false;
+      const startMin = toMinutes(c.schedule?.startTime);
+      const duration = getClassDuration(c);
+      const endMin = startMin + duration;
+      return slotMin >= startMin && slotMin < endMin;
+    });
+  };
 
   const fetchClasses = async () => {
     setLoading(true);
@@ -225,16 +292,6 @@ const TeacherClasses = () => {
     );
   }
 
-  if (classes.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <BookOpen className="w-16 h-16 text-secondary-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-secondary-900 mb-2">No Classes Found</h3>
-        <p className="text-secondary-600">You don't have any classes assigned yet.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -248,88 +305,245 @@ const TeacherClasses = () => {
         </div>
       </div>
 
-      {/* Classes Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {classes.map((classItem, idx) => (
-          <div key={classItem._id || `class-${idx}`} className="card overflow-hidden">
-            {/* Class Header */}
-            <div className="p-6 pb-4">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-secondary-900 mb-1">
-                    {classItem.subject}
-                  </h3>
-                  <p className="text-sm text-secondary-600 mb-2">{classItem.subjectCode}</p>
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(classItem.status)}`}>
-                    {getStatusText(classItem.status)}
-                  </span>
-                </div>
-                <BookOpen className="w-8 h-8 text-primary-600" />
-              </div>
-
-              {/* Schedule Info */}
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center text-sm text-secondary-600">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  <span className={isToday(classItem.schedule.dayOfWeek) ? 'font-semibold text-primary-600' : ''}>
-                    {classItem.schedule.dayOfWeek}s
-                  </span>
-                </div>
-                <div className="flex items-center text-sm text-secondary-600">
-                  <Clock className="w-4 h-4 mr-2" />
-                  {classItem.schedule.startTime} - {classItem.schedule.endTime}
-                </div>
-                <div className="flex items-center text-sm text-secondary-600">
-                  <MapPin className="w-4 h-4 mr-2" />
-                  {classItem.location.address}
-                </div>
-                <div className="flex items-center text-sm text-secondary-600">
-                  <Users className="w-4 h-4 mr-2" />
-                  {classItem.enrolledStudents} students enrolled
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="px-6 pb-6">
-              {classItem.status === 'scheduled' && (
-                <button
-                  onClick={() => startAttendanceSession(classItem._id)}
-                  className="w-full btn btn-primary btn-sm flex items-center justify-center space-x-2"
-                >
-                  <PlayCircle className="w-4 h-4" />
-                  <span>Start Session</span>
-                </button>
-              )}
-              
-              {classItem.status === 'active' && (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => endAttendanceSession(classItem._id)}
-                    className="w-full btn btn-warning btn-sm flex items-center justify-center space-x-2"
-                  >
-                    <PauseCircle className="w-4 h-4" />
-                    <span>End Session</span>
-                  </button>
-                  <p className="text-xs text-center text-green-600">
-                    Session active - Students can mark attendance
-                  </p>
-                </div>
-              )}
-              
-              {classItem.status === 'completed' && (
-                <button
-                  className="w-full btn btn-secondary btn-sm flex items-center justify-center space-x-2"
-                  disabled
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  <span>Session Completed</span>
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
+      {/* View Switcher Tabs */}
+      <div className="flex border-b border-secondary-200">
+        <button
+          type="button"
+          onClick={() => setViewMode('list')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            viewMode === 'list'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-secondary-600 hover:text-secondary-800'
+          }`}
+        >
+          Class List
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('routine')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all ${
+            viewMode === 'routine'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-secondary-600 hover:text-secondary-800'
+          }`}
+        >
+          Weekly Routine
+        </button>
       </div>
+
+      {viewMode === 'list' ? (
+        classes.length === 0 ? (
+          <div className="card p-8 text-center">
+            <BookOpen className="w-16 h-16 text-secondary-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-secondary-900 mb-2">
+              No Classes Found
+            </h3>
+            <p className="text-secondary-600">
+              You don't have any classes assigned yet.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {classes.map((classItem, idx) => (
+              <div key={classItem._id || `class-${idx}`} className="card overflow-hidden">
+                {/* Class Header */}
+                <div className="p-6 pb-4">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-secondary-900 mb-1">
+                        {classItem.subject}
+                      </h3>
+                      <p className="text-sm text-secondary-600 mb-2">{classItem.subjectCode}</p>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(classItem.status)}`}>
+                        {getStatusText(classItem.status)}
+                      </span>
+                    </div>
+                    <BookOpen className="w-8 h-8 text-primary-600" />
+                  </div>
+
+                  {/* Schedule Info */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center text-sm text-secondary-600">
+                      <Calendar className="w-4 h-4 mr-2" />
+                      <span className={isToday(classItem.schedule.dayOfWeek) ? 'font-semibold text-primary-600' : ''}>
+                        {classItem.schedule.dayOfWeek}s
+                      </span>
+                    </div>
+                    <div className="flex items-center text-sm text-secondary-600">
+                      <Clock className="w-4 h-4 mr-2" />
+                      {classItem.schedule.startTime} - {classItem.schedule.endTime}
+                    </div>
+                    <div className="flex items-center text-sm text-secondary-600">
+                      <MapPin className="w-4 h-4 mr-2" />
+                      {classItem.location.address}
+                    </div>
+                    <div className="flex items-center text-sm text-secondary-600">
+                      <Users className="w-4 h-4 mr-2" />
+                      {classItem.enrolledStudents} students enrolled
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="px-6 pb-6">
+                  {classItem.status === 'scheduled' && (
+                    <button
+                      onClick={() => startAttendanceSession(classItem._id)}
+                      className="w-full btn btn-primary btn-sm flex items-center justify-center space-x-2"
+                    >
+                      <PlayCircle className="w-4 h-4" />
+                      <span>Start Session</span>
+                    </button>
+                  )}
+                  
+                  {classItem.status === 'active' && (
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => endAttendanceSession(classItem._id)}
+                        className="w-full btn btn-warning btn-sm flex items-center justify-center space-x-2"
+                      >
+                        <PauseCircle className="w-4 h-4" />
+                        <span>End Session</span>
+                      </button>
+                      <p className="text-xs text-center text-green-600">
+                        Session active - Students can mark attendance
+                      </p>
+                    </div>
+                  )}
+                  
+                  {classItem.status === 'completed' && (
+                    <button
+                      className="w-full btn btn-secondary btn-sm flex items-center justify-center space-x-2"
+                      disabled
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Session Completed</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        /* Weekly Routine Grid View */
+        <div className="overflow-x-auto rounded-lg border bg-white shadow-sm">
+          <div className="min-w-[880px] grid grid-cols-[88px_repeat(6,minmax(120px,1fr))] relative bg-gray-50">
+            {/* Header Row */}
+            <div className="p-3 bg-gray-50 border-b text-sm font-semibold text-gray-700">Time</div>
+            {DAYS.map((day) => (
+              <div key={day} className="border-l border-b p-3 bg-gray-50 text-sm font-semibold text-gray-700">{day.slice(0, 3)}</div>
+            ))}
+  
+            {/* Time Slots & Background Cells */}
+            {TIME_SLOTS.map((time, slotIdx) => {
+              const rowIdx = slotIdx + 2;
+              const isBreak = BREAK_SLOTS.has(time);
+  
+              return (
+                <React.Fragment key={time}>
+                  {/* Time Label */}
+                  <div
+                    className="flex items-start justify-center p-3 text-sm font-medium text-gray-700 border-b bg-gray-50"
+                    style={{ gridColumn: 1, gridRow: rowIdx }}
+                  >
+                    {time}
+                  </div>
+  
+                  {isBreak ? (
+                    <div
+                      className="flex items-center justify-center border-l border-b border-gray-200 bg-gray-100 text-xs font-medium text-gray-500"
+                      style={{ gridColumn: '2 / span 6', gridRow: rowIdx, minHeight: '88px' }}
+                    >
+                      Break
+                    </div>
+                  ) : (
+                    DAYS.map((day, dayIdx) => {
+                      const colIdx = dayIdx + 2;
+                      const occupyingClass = getOccupyingClass(day, time);
+  
+                      if (occupyingClass) {
+                        return (
+                          <div
+                            key={`${day}-${time}`}
+                            className="border-l border-b border-gray-100 bg-white"
+                            style={{ gridColumn: colIdx, gridRow: rowIdx, minHeight: '88px' }}
+                          />
+                        );
+                      } else {
+                        return (
+                          <div
+                            key={`${day}-${time}`}
+                            className="border-l border-b border-gray-200 bg-white flex items-center justify-center p-2 text-left"
+                            style={{ gridColumn: colIdx, gridRow: rowIdx, minHeight: '88px' }}
+                          >
+                            <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-gray-100 text-xs text-gray-400">
+                              Free
+                            </div>
+                          </div>
+                        );
+                      }
+                    })
+                  )}
+                </React.Fragment>
+              );
+            })}
+  
+            {/* Dynamic Class Cards */}
+            {classes.map((classItem) => {
+              const dayIdx = DAYS.indexOf(classItem.schedule?.dayOfWeek);
+              if (dayIdx === -1) return null;
+  
+              const startMin = toMinutes(classItem.schedule?.startTime);
+              const duration = getClassDuration(classItem);
+              const endMin = startMin + duration;
+  
+              const startRow = Math.max(0, Math.floor((startMin - SCHEDULE_START_MINUTES) / 30)) + 2;
+              const endRow = Math.min(TIME_SLOTS.length, Math.ceil((endMin - SCHEDULE_START_MINUTES) / 30)) + 2;
+              const rowSpan = Math.max(1, endRow - startRow);
+  
+              const colIdx = dayIdx + 2;
+              const color = subjectColorMap.get(classItem.subjectCode || classItem.subject) || colorClasses[0];
+  
+              return (
+                <div
+                  key={getClassId(classItem)}
+                  className={`rounded-md border p-3 text-xs shadow-sm flex flex-col justify-between ${color}`}
+                  style={{
+                    gridColumn: colIdx,
+                    gridRow: `${startRow} / span ${rowSpan}`,
+                    zIndex: 10,
+                    margin: '3px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  <div>
+                    <div className="font-bold text-sm tracking-tight leading-tight mb-1">
+                      {classItem.subjectCode || classItem.subject}
+                    </div>
+                    <div className="text-xs font-semibold mb-1 truncate text-gray-800">
+                      {classItem.subject}
+                    </div>
+                    <div className="mt-1 font-medium truncate text-gray-700 flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5 inline text-gray-700" />
+                      <span>{classItem.enrolledStudents} enrolled</span>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-col gap-0.5 text-[10px] opacity-80 border-t border-black/5 pt-1.5">
+                    <div className="text-gray-600 font-medium">
+                      Room: {classItem.location?.address || 'TBA'}
+                    </div>
+                    <div className="text-gray-600 font-medium flex items-center justify-between">
+                      <span>{classItem.schedule?.startTime} - {getClassEndTime(classItem)} ({duration}m)</span>
+                      <span className="capitalize font-bold text-[9px] px-1 bg-black/5 rounded">{classItem.status}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Today's Classes Highlight */}
       {classes.filter(c => isToday(c.schedule.dayOfWeek)).length > 0 && (
