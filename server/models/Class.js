@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+const getScheduleDuration = (schedule) => {
+  if (!schedule || !schedule.startTime || !schedule.endTime) return undefined;
+
+  const [startHour, startMinute] = String(schedule.startTime).split(':').map(Number);
+  const [endHour, endMinute] = String(schedule.endTime).split(':').map(Number);
+
+  if (![startHour, startMinute, endHour, endMinute].every(Number.isFinite)) {
+    return undefined;
+  }
+
+  return (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+};
+
 /**
  * Class Schema
  * Represents a class session with teacher location and geofence
@@ -86,16 +99,6 @@ const classSchema = new mongoose.Schema({
         return /^\d{4}-\d{4}$/.test(year);
       },
       message: 'Academic year must be in format YYYY-YYYY (e.g., 2023-2024)'
-    }
-  },
-
-  section: {
-    type: String,
-    trim: true,
-    uppercase: true,
-    enum: {
-      values: ['A', 'B'],
-      message: 'Section must be either A or B'
     }
   },
 
@@ -325,16 +328,11 @@ classSchema.virtual('attendanceWindowTimes').get(function() {
   };
 });
 
-// Pre-save middleware to calculate duration
-classSchema.pre('save', function(next) {
-  if (this.schedule && this.schedule.startTime && this.schedule.endTime) {
-    const [startHour, startMinute] = this.schedule.startTime.split(':').map(Number);
-    const [endHour, endMinute] = this.schedule.endTime.split(':').map(Number);
-
-    const startMinutes = startHour * 60 + startMinute;
-    const endMinutes = endHour * 60 + endMinute;
-
-    this.schedule.duration = endMinutes - startMinutes;
+// Pre-validation middleware to calculate derived fields before required validators run.
+classSchema.pre('validate', function(next) {
+  const duration = getScheduleDuration(this.schedule);
+  if (typeof duration === 'number') {
+    this.schedule.duration = duration;
   }
 
   if (!this.year && this.semester) {
@@ -343,6 +341,24 @@ classSchema.pre('save', function(next) {
 
   if (this.section) {
     this.section = String(this.section).trim().toUpperCase();
+  }
+
+  next();
+});
+
+classSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  const schedule = update?.schedule || update?.$set?.schedule;
+  const duration = getScheduleDuration(schedule);
+
+  if (typeof duration === 'number') {
+    if (update.schedule) {
+      update.schedule.duration = duration;
+    } else {
+      update.$set = update.$set || {};
+      update.$set['schedule.duration'] = duration;
+    }
+    this.setUpdate(update);
   }
 
   next();

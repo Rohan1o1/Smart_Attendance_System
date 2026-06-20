@@ -4,12 +4,59 @@ import { adminAPI, classAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+const SLOT_MINUTES = 30;
+const SCHEDULE_START_MINUTES = 9 * 60;
+const SCHEDULE_END_MINUTES = 17 * 60;
+const ROW_HEIGHT = 48;
+const toMinutes = (time) => {
+  const [hours, minutes] = String(time).split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+};
+
+const fromMinutes = (minutes) => {
+  const boundedMinutes = Math.max(0, Math.min(minutes, 23 * 60 + 59));
+  const hours = Math.floor(boundedMinutes / 60);
+  const mins = boundedMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const TIME_SLOTS = Array.from(
+  { length: (SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES },
+  (_, index) => fromMinutes(SCHEDULE_START_MINUTES + index * SLOT_MINUTES)
+);
 const BREAK_SLOTS = new Set(['12:00']);
 const DEFAULT_DURATION_MINUTES = 60;
+const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180];
 const DEFAULT_YEARS = [1, 2, 3, 4];
 const DEFAULT_SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 const DEFAULT_SECTIONS = ['A', 'B', 'C', 'D'];
+const colorClasses = [
+  'border-blue-200 bg-blue-50 text-blue-900',
+  'border-emerald-200 bg-emerald-50 text-emerald-900',
+  'border-amber-200 bg-amber-50 text-amber-900',
+  'border-rose-200 bg-rose-50 text-rose-900',
+  'border-violet-200 bg-violet-50 text-violet-900',
+  'border-cyan-200 bg-cyan-50 text-cyan-900'
+];
+
+const getClassId = (classItem) => classItem?._id || classItem?.id;
+
+const getDefaultAcademicYear = () => {
+  const currentYear = new Date().getFullYear();
+  return `${currentYear}-${currentYear + 1}`;
+};
+
+const getClassDuration = (classItem) => {
+  const duration = Number(classItem?.schedule?.duration);
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  const start = toMinutes(classItem?.schedule?.startTime);
+  const end = toMinutes(classItem?.schedule?.endTime);
+  return Math.max(SLOT_MINUTES, end - start || DEFAULT_DURATION_MINUTES);
+};
+
+const getClassEndTime = (classItem) => fromMinutes(toMinutes(classItem?.schedule?.startTime) + getClassDuration(classItem));
+
+const rangesOverlap = (startA, endA, startB, endB) => startA < endB && startB < endA;
 
 const emptyDraft = {
   _id: '',
@@ -24,9 +71,9 @@ const emptyDraft = {
   dayOfWeek: 'Monday',
   startTime: '09:00',
   endTime: '10:00',
+  durationMinutes: DEFAULT_DURATION_MINUTES,
   classroom: '',
-  description: '',
-  teacherId: ''
+  description: ''
 };
 
 const ClassesPage = () => {
@@ -38,6 +85,7 @@ const ClassesPage = () => {
   const [error, setError] = useState('');
   const [filters, setFilters] = useState({
     department: user?.department || '',
+    year: '',
     semester: '',
     section: '',
     teacherId: ''
@@ -192,19 +240,9 @@ const ClassesPage = () => {
   }, []);
 
   useEffect(() => {
-    if (user?.role === 'admin' && user.department) {
-      setForm((current) => ({
-        ...current,
-        department: current.department || user.department,
-        section: current.section || 'A'
-      }));
-    }
-  }, [user]);
-
-  useEffect(() => {
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.department, filters.semester, filters.section, filters.teacherId]);
+  }, [filters.department, filters.year, filters.semester, filters.section, filters.teacherId]);
 
   useEffect(() => {
     if (!filters.department && departments.length > 0) {
@@ -241,7 +279,7 @@ const ClassesPage = () => {
           }
         }
       } else {
-        res = await classAPI.getActiveClasses({});
+        res = await classAPI.getManageClasses(filters);
       }
       if (res.success && res.data && res.data.classes) {
         setClasses(res.data.classes);
@@ -249,7 +287,7 @@ const ClassesPage = () => {
         setClasses(res.data);
       } else {
         setClasses([]);
-        setError(response.message || 'Failed to load schedule');
+        setError(res.message || 'Failed to load schedule');
       }
     } catch (err) {
       setClasses([]);
@@ -269,9 +307,16 @@ const ClassesPage = () => {
     }));
   };
 
-  const getClassesAt = (day, time) => classes.filter((item) => (
-    item.schedule?.dayOfWeek === day && item.schedule?.startTime === time
-  ));
+  const getOccupyingClass = (day, time) => {
+    const slotMin = toMinutes(time);
+    return classes.find((c) => {
+      if (c.schedule?.dayOfWeek !== day) return false;
+      const startMin = toMinutes(c.schedule?.startTime);
+      const duration = getClassDuration(c);
+      const endMin = startMin + duration;
+      return slotMin >= startMin && slotMin < endMin;
+    });
+  };
 
   const openAdd = (dayOfWeek, startTime) => {
     if (BREAK_SLOTS.has(startTime)) return;
@@ -280,7 +325,7 @@ const ClassesPage = () => {
       ...emptyDraft,
       department: filters.department || user?.department || departments[0] || '',
       semester: filters.semester || '',
-      year: filters.semester ? Math.ceil(Number(filters.semester) / 2) : years[0] || '',
+      year: filters.year || (filters.semester ? Math.ceil(Number(filters.semester) / 2) : years[0] || ''),
       section: filters.section || '',
       teacherId: filters.teacherId || '',
       academicYear: getDefaultAcademicYear(),
@@ -303,7 +348,7 @@ const ClassesPage = () => {
       academicYear: classItem.academicYear || getDefaultAcademicYear(),
       dayOfWeek: classItem.schedule?.dayOfWeek || 'Monday',
       startTime: classItem.schedule?.startTime || '09:00',
-      endTime: classItem.schedule?.endTime || '10:00',
+      endTime: getClassEndTime(classItem),
       classroom: classItem.classroom || '',
       description: classItem.description || ''
     });
@@ -311,22 +356,41 @@ const ClassesPage = () => {
 
   const updateDraft = (event) => {
     const { name, value } = event.target;
-    setDraft((prev) => ({
-      ...prev,
-      [name]: value,
-      ...(name === 'department' ? { year: '', semester: '', section: '', teacherId: '' } : {}),
-      ...(name === 'year' ? { semester: '', section: '' } : {}),
-      ...(name === 'semester' ? { section: '' } : {}),
-      ...(name === 'section' ? { section: value.toUpperCase() } : {})
-    }));
+    setDraft((prev) => {
+      let updated = {
+        ...prev,
+        [name]: value,
+        ...(name === 'department' ? { year: '', semester: '', section: '', teacherId: '' } : {}),
+        ...(name === 'year' ? { semester: '', section: '' } : {}),
+        ...(name === 'semester' ? { section: '' } : {}),
+        ...(name === 'section' ? { section: value.toUpperCase() } : {})
+      };
+
+      if (name === 'startTime') {
+        const duration = toMinutes(prev.endTime) - toMinutes(prev.startTime);
+        updated.endTime = fromMinutes(toMinutes(value) + duration);
+      }
+
+      return updated;
+    });
   };
 
   const draftConflict = useMemo(() => {
     if (!draft) return null;
+    const draftStart = toMinutes(draft.startTime);
+    const draftEnd = toMinutes(draft.endTime);
+    if (draftEnd <= draftStart) return null;
+
     return classes.find((item) => {
       if (getClassId(item) === draft._id) return false;
-      const sameSlot = item.schedule?.dayOfWeek === draft.dayOfWeek && item.schedule?.startTime === draft.startTime;
-      if (!sameSlot) return false;
+      if (item.schedule?.dayOfWeek !== draft.dayOfWeek) return false;
+
+      const itemStart = toMinutes(item.schedule?.startTime);
+      const itemEnd = toMinutes(getClassEndTime(item));
+
+      const overlaps = rangesOverlap(draftStart, draftEnd, itemStart, itemEnd);
+      if (!overlaps) return false;
+
       const sameTeacher = String(item.teacherId?._id || item.teacherId) === String(draft.teacherId);
       const sameGroup = item.department === draft.department &&
         Number(item.semester) === Number(draft.semester) &&
@@ -369,126 +433,103 @@ const ClassesPage = () => {
         return;
       }
 
-      // If admin is creating the class, require teacher selection
-      if (user && user.role === 'admin' && !form.teacherId) {
-        setError('Please select a teacher to assign this class to');
-        setLoading(false);
-        return;
-      }
-      // Build payload matching server validation schema
-      const semesterNum = (() => {
-        if (!form.semester) return null;
-        const m = String(form.semester).match(/(\d+)/);
-        return m ? parseInt(m[1], 10) : parseInt(form.semester, 10) || null;
-      })();
-
-      const currentYear = new Date().getFullYear();
-      const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
-
-      // compute schedule and duration from form fields
-      const start = form.scheduleStartTime || (Array.isArray(form.schedule) && form.schedule[0]?.startTime) || '09:00';
-      const end = form.scheduleEndTime || (Array.isArray(form.schedule) && form.schedule[0]?.endTime) || '10:00';
-      const day = form.scheduleDay || (Array.isArray(form.schedule) && form.schedule[0]?.dayOfWeek) || 'Monday';
-
-      const parseMinutes = (hhmm) => {
-        const [h, m] = String(hhmm).split(':').map(Number);
-        return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-      };
-
-      const durationMinutes = parseMinutes(end) - parseMinutes(start);
-      if (durationMinutes <= 0) {
-        setError('End time must be after start time');
-        setLoading(false);
-        return;
-      }
-
-      const scheduleObj = {
-        dayOfWeek: day,
-        startTime: start,
-        endTime: end,
-        duration: durationMinutes
-      };
-
-      const payload = {
-        subject: form.subject,
-        subjectCode: (form.subjectCode || '').toUpperCase(),
-        department: form.department,
-        semester: semesterNum || 1,
-        academicYear: form.academicYear && /\d{4}-\d{4}/.test(form.academicYear) ? form.academicYear : defaultAcademicYear,
-        // send computed schedule with duration
-        schedule: scheduleObj,
-        geofenceRadius: form.geofenceRadius || 20,
-        classroom: form.classroom || undefined,
-        description: form.description || undefined,
-        teacherId: form.teacherId
-      };
-
-      // Remove empty string or undefined fields so Joi optional fields don't trigger 'is not allowed to be empty'
-      Object.keys(payload).forEach(key => {
-        const val = payload[key];
-        if (val === '' || val === null || typeof val === 'undefined') {
-          delete payload[key];
-        }
-      });
-
-      if (editingId) {
-        const res = await classAPI.updateClass(editingId, payload);
-        console.debug('Update class response', res);
-        if (res.success) {
-          await fetchClasses();
-          setForm(emptyForm);
-          setEditingId(null);
-        } else {
-          setError(res.errors || res.message || 'Failed to update class');
-        }
-      } else {
-        const res = await classAPI.createClass(payload);
-        console.debug('Create class response', res);
-        if (res.success) {
-          await fetchClasses();
-          setForm(emptyForm);
-        } else {
-          setError(res.errors || res.message || 'Failed to create class');
-        }
-      }
+      setDraft(null);
+      await fetchClasses();
     } catch (err) {
-      setError(err.message || 'Failed to delete class');
+      setError(err.message || 'Failed to save class');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleEdit = (cls) => {
-    setEditingId(cls._id);
-    setForm({
-      subject: cls.subject || '',
-      subjectCode: cls.subjectCode || '',
-      department: cls.department || '',
-  semester: cls.semester || '',
-  academicYear: cls.academicYear || '',
-  schedule: cls.schedule || [],
-  scheduleDay: cls.schedule?.dayOfWeek || (cls.schedule && cls.schedule[0]?.dayOfWeek) || 'Monday',
-  scheduleStartTime: cls.schedule?.startTime || (cls.schedule && cls.schedule[0]?.startTime) || '09:00',
-  scheduleEndTime: cls.schedule?.endTime || (cls.schedule && cls.schedule[0]?.endTime) || '10:00',
-  geofenceRadius: cls.geofenceRadius || 20,
-      classroom: cls.classroom || '',
-      description: cls.description || '',
-      teacherId: cls.teacherId?._id || ''
-    });
-  };
+  const handleDrop = async (dayOfWeek, startTime) => {
+    if (!draggedClassId || BREAK_SLOTS.has(startTime)) return;
+    const classItem = classes.find((item) => getClassId(item) === draggedClassId);
+    setDraggedClassId(null);
+    if (!classItem) return;
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this class?')) return;
-    setLoading(true);
+    const duration = getClassDuration(classItem);
+    const endTime = fromMinutes(toMinutes(startTime) + duration);
+
+    // Find any overlapping class in the target slot
+    const targetStart = toMinutes(startTime);
+    const targetEnd = targetStart + duration;
+
+    const overlappingClasses = classes.filter((item) => {
+      if (getClassId(item) === draggedClassId) return false;
+      if (item.schedule?.dayOfWeek !== dayOfWeek) return false;
+
+      const itemStart = toMinutes(item.schedule?.startTime);
+      const itemEnd = toMinutes(getClassEndTime(item));
+
+      return rangesOverlap(targetStart, targetEnd, itemStart, itemEnd);
+    });
+
     try {
-      const res = await classAPI.deleteClass(id);
-      if (res.success) {
-        await fetchClasses();
-      } else {
-        setError(res.message || 'Failed to delete class');
+      setSaving(true);
+      setError('');
+
+      if (overlappingClasses.length > 0) {
+        const conflictingNames = overlappingClasses.map((c) => c.subject).join(', ');
+        const confirmReplace = window.confirm(
+          `Conflict detected with existing class(es): ${conflictingNames}. Do you want to replace them?`
+        );
+
+        if (!confirmReplace) {
+          setSaving(false);
+          return;
+        }
+
+        // Delete the conflicting classes
+        for (const confClass of overlappingClasses) {
+          const delRes = await classAPI.deleteClass(getClassId(confClass));
+          if (!delRes.success) {
+            setError(delRes.message || 'Failed to replace existing class');
+            setSaving(false);
+            return;
+          }
+        }
       }
+
+      // Update the dragged class schedule
+      const response = await classAPI.updateClass(draggedClassId, {
+        schedule: {
+          ...(classItem.schedule || {}),
+          dayOfWeek,
+          startTime,
+          endTime
+        }
+      });
+
+      if (!response.success) {
+        setError(response.message || 'Failed to move class');
+        return;
+      }
+
+      await fetchClasses();
     } catch (err) {
       setError(err.message || 'Failed to move class');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteDraft = async () => {
+    if (!draft?._id || !window.confirm('Delete this class?')) return;
+    try {
+      setSaving(true);
+      setError('');
+      const response = await classAPI.deleteClass(draft._id);
+      if (!response.success) {
+        setError(response.message || 'Failed to delete class');
+        return;
+      }
+      setDraft(null);
+      await fetchClasses();
+    } catch (err) {
+      setError(err.message || 'Failed to delete class');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -505,12 +546,21 @@ const ClassesPage = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-5">
         <label className="space-y-1">
           <span className="text-xs font-medium text-gray-600">Department</span>
           <select name="department" value={filters.department} onChange={handleFilterChange} className="input w-full">
             {departments.map((department) => (
               <option key={department} value={department}>{department}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-gray-600">Year</span>
+          <select name="year" value={filters.year} onChange={handleFilterChange} className="input w-full">
+            <option value="">All years</option>
+            {years.map((year) => (
+              <option key={year} value={year}>Year {year}</option>
             ))}
           </select>
         </label>
@@ -551,77 +601,132 @@ const ClassesPage = () => {
       )}
 
       <div className="overflow-x-auto rounded-lg border bg-white">
-        <div className="min-w-[880px]">
-          <div className="grid grid-cols-[88px_repeat(6,minmax(120px,1fr))] border-b bg-gray-50 text-sm font-semibold text-gray-700">
-            <div className="p-3">Time</div>
-            {DAYS.map((day) => (
-              <div key={day} className="border-l p-3">{day.slice(0, 3)}</div>
-            ))}
-          </div>
-
-          {TIME_SLOTS.map((time) => (
-            <div key={time} className="grid min-h-[88px] grid-cols-[88px_repeat(6,minmax(120px,1fr))] border-b last:border-b-0">
-              <div className="flex items-start justify-center p-3 text-sm font-medium text-gray-700">{time}</div>
-              {DAYS.map((day) => {
-                const slotClasses = getClassesAt(day, time);
-                const isBreak = BREAK_SLOTS.has(time);
-                return (
-                  <button
-                    type="button"
-                    key={`${day}-${time}`}
-                    onClick={() => !isBreak && slotClasses.length === 0 && openAdd(day, time)}
-                    onDragOver={(event) => !isBreak && event.preventDefault()}
-                    onDrop={() => handleDrop(day, time)}
-                    className={`min-h-[88px] border-l p-2 text-left transition ${isBreak ? 'cursor-not-allowed bg-gray-50' : 'hover:bg-gray-50'}`}
-                    disabled={isBreak}
-                  >
-                    {isBreak ? (
-                      <div className="flex h-full items-center justify-center rounded bg-gray-100 text-xs font-medium text-gray-500">
-                        Break
-                      </div>
-                    ) : slotClasses.length === 0 ? (
-                      <div className="flex h-full items-center justify-center rounded border border-dashed border-gray-200 text-xs text-gray-400">
-                        Free
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {slotClasses.map((classItem) => {
-                          const color = subjectColorMap.get(classItem.subjectCode || classItem.subject) || colorClasses[0];
-                          const teacherName = classItem.teacherId
-                            ? `${classItem.teacherId.firstName || ''} ${classItem.teacherId.lastName || ''}`.trim()
-                            : classItem.teacherName;
-                          return (
-                            <div
-                              key={getClassId(classItem)}
-                              draggable
-                              onDragStart={(event) => {
-                                event.stopPropagation();
-                                setDraggedClassId(getClassId(classItem));
-                              }}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openEdit(classItem);
-                              }}
-                              className={`rounded-md border p-2 text-xs shadow-sm ${color}`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold">{classItem.subjectCode || classItem.subject}</span>
-                                <GripVertical className="h-3.5 w-3.5 opacity-60" />
-                              </div>
-                              <div className="mt-1 truncate">{teacherName || 'Teacher'}</div>
-                              <div className="mt-1 truncate text-[11px] opacity-80">
-                                Sem {classItem.semester} | Sec {classItem.section || 'All'}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+        <div className="min-w-[880px] grid grid-cols-[88px_repeat(6,minmax(120px,1fr))] relative bg-gray-50">
+          {/* Header Row */}
+          <div className="p-3 bg-gray-50 border-b text-sm font-semibold text-gray-700">Time</div>
+          {DAYS.map((day) => (
+            <div key={day} className="border-l border-b p-3 bg-gray-50 text-sm font-semibold text-gray-700">{day.slice(0, 3)}</div>
           ))}
+
+          {/* Time Slots & Background Cells */}
+          {TIME_SLOTS.map((time, slotIdx) => {
+            const rowIdx = slotIdx + 2;
+            const isBreak = BREAK_SLOTS.has(time);
+
+            return (
+              <React.Fragment key={time}>
+                {/* Time Label */}
+                <div
+                  className="flex items-start justify-center p-3 text-sm font-medium text-gray-700 border-b bg-gray-50"
+                  style={{ gridColumn: 1, gridRow: rowIdx }}
+                >
+                  {time}
+                </div>
+
+                {isBreak ? (
+                  /* Break Span across all columns */
+                  <div
+                    className="flex items-center justify-center border-l border-b border-gray-200 bg-gray-100 text-xs font-medium text-gray-500"
+                    style={{ gridColumn: '2 / span 6', gridRow: rowIdx, minHeight: '88px' }}
+                  >
+                    Break
+                  </div>
+                ) : (
+                  DAYS.map((day, dayIdx) => {
+                    const colIdx = dayIdx + 2;
+                    const occupyingClass = getOccupyingClass(day, time);
+
+                    if (occupyingClass) {
+                      return (
+                        <div
+                          key={`${day}-${time}`}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => handleDrop(day, time)}
+                          className="border-l border-b border-gray-100 bg-white"
+                          style={{ gridColumn: colIdx, gridRow: rowIdx, minHeight: '88px' }}
+                        />
+                      );
+                    } else {
+                      return (
+                        <button
+                          type="button"
+                          key={`${day}-${time}`}
+                          onClick={() => openAdd(day, time)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => handleDrop(day, time)}
+                          className="border-l border-b border-gray-200 bg-white hover:bg-gray-50/50 transition flex items-center justify-center p-2 text-left"
+                          style={{ gridColumn: colIdx, gridRow: rowIdx, minHeight: '88px' }}
+                        >
+                          <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-gray-200 text-xs text-gray-400">
+                            Free
+                          </div>
+                        </button>
+                      );
+                    }
+                  })
+                )}
+              </React.Fragment>
+            );
+          })}
+
+          {/* Dynamic Class Cards */}
+          {classes.map((classItem) => {
+            const dayIdx = DAYS.indexOf(classItem.schedule?.dayOfWeek);
+            if (dayIdx === -1) return null;
+
+            const startMin = toMinutes(classItem.schedule?.startTime);
+            const duration = getClassDuration(classItem);
+            const endMin = startMin + duration;
+
+            const startRow = Math.max(0, Math.floor((startMin - SCHEDULE_START_MINUTES) / 30)) + 2;
+            const endRow = Math.min(TIME_SLOTS.length, Math.ceil((endMin - SCHEDULE_START_MINUTES) / 30)) + 2;
+            const rowSpan = Math.max(1, endRow - startRow);
+
+            const colIdx = dayIdx + 2;
+            const color = subjectColorMap.get(classItem.subjectCode || classItem.subject) || colorClasses[0];
+            const teacherName = classItem.teacherId
+              ? `${classItem.teacherId.firstName || ''} ${classItem.teacherId.lastName || ''}`.trim()
+              : classItem.teacherName;
+
+            return (
+              <div
+                key={getClassId(classItem)}
+                draggable
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  setDraggedClassId(getClassId(classItem));
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEdit(classItem);
+                }}
+                className={`rounded-md border p-3 text-xs shadow-sm cursor-pointer transition select-none flex flex-col justify-between ${color}`}
+                style={{
+                  gridColumn: colIdx,
+                  gridRow: `${startRow} / span ${rowSpan}`,
+                  zIndex: 10,
+                  margin: '3px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                }}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-1.5">
+                    <span className="font-bold text-sm tracking-tight leading-tight">{classItem.subjectCode || classItem.subject}</span>
+                    <GripVertical className="h-3.5 w-3.5 opacity-60 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+                  </div>
+                  <div className="mt-1.5 font-medium truncate text-gray-700">{teacherName || 'Teacher'}</div>
+                </div>
+                <div className="mt-2 flex flex-col gap-0.5 text-[10px] opacity-80 border-t border-black/5 pt-1.5">
+                  <div className="font-semibold text-gray-800">
+                    Sem {classItem.semester} | Sec {classItem.section || 'All'}
+                  </div>
+                  <div className="text-gray-600 font-medium">
+                    {classItem.schedule?.startTime} - {getClassEndTime(classItem)} ({duration}m)
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -707,10 +812,44 @@ const ClassesPage = () => {
                 </label>
               </div>
 
-            <div className="flex items-center space-x-2">
-              <button type="submit" className="btn btn-primary" disabled={loading}>{editingId ? 'Update' : 'Create'}</button>
-              {editingId && <button type="button" onClick={() => { setEditingId(null); setForm(emptyForm); }} className="btn">Cancel</button>}
-            </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Day of Week</span>
+                  <select name="dayOfWeek" value={draft.dayOfWeek} onChange={updateDraft} required className="input w-full">
+                    {DAYS.map((day) => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Start Time</span>
+                  <select name="startTime" value={draft.startTime} onChange={updateDraft} required className="input w-full">
+                    {TIME_SLOTS.map((time) => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Duration</span>
+                  <select
+                    name="durationMinutes"
+                    value={toMinutes(draft.endTime) - toMinutes(draft.startTime)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setDraft((prev) => ({
+                        ...prev,
+                        endTime: fromMinutes(toMinutes(prev.startTime) + val)
+                      }));
+                    }}
+                    required
+                    className="input w-full"
+                  >
+                    {DURATION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt} minutes</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="space-y-1">

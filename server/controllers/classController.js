@@ -5,6 +5,8 @@ const config = require('../config');
 
 const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const getTeacherDisplayName = (teacher) => `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim();
+
 /**
  * Class Controller
  * Handles class creation, session management, and enrollment
@@ -24,13 +26,13 @@ const createClass = async (req, res) => {
       semester,
       section,
       academicYear,
-      section,
       schedule,
       geofenceRadius,
       classroom,
       description,
       teacherId: requestedTeacherId
     } = req.body;
+    const normalizedSection = section ? String(section).trim().toUpperCase() : undefined;
 
     // Determine teacher for the class
     let teacherId = req.user._id;
@@ -59,10 +61,10 @@ const createClass = async (req, res) => {
       teacherId,
       teacherName: `${req.user.firstName} ${req.user.lastName}`,
       department,
+      year,
       semester,
       section: normalizedSection,
       academicYear,
-      section: section ? String(section).toUpperCase() : undefined,
       schedule,
       geofenceRadius: geofenceRadius || 20,
       classroom,
@@ -656,17 +658,44 @@ const updateClass = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
+    const requestedTeacherId = updates.teacherId;
 
     // Remove fields that shouldn't be updated directly
     const restrictedFields = ['classId', 'teacherId', 'teacherName', 'createdBy', 'statistics'];
     restrictedFields.forEach(field => delete updates[field]);
 
-    const classObj = await Class.findOneAndUpdate(
-      {
-        _id: id,
-        teacherId,
+    const query = {
+      _id: id,
+      isActive: true
+    };
+
+    if (req.user.role === 'teacher') {
+      query.teacherId = req.user._id;
+    } else if (req.user.role === 'admin') {
+      query.department = req.user.department;
+    }
+
+    if (req.user.role === 'admin' && requestedTeacherId) {
+      const teacher = await User.findOne({
+        _id: requestedTeacherId,
+        role: 'teacher',
+        department: req.user.department,
         isActive: true
-      },
+      });
+
+      if (!teacher) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected teacher was not found in your department'
+        });
+      }
+
+      updates.teacherId = requestedTeacherId;
+      updates.teacherName = getTeacherDisplayName(teacher);
+    }
+
+    const classObj = await Class.findOneAndUpdate(
+      query,
       updates,
       {
         new: true,
