@@ -690,18 +690,6 @@ export const classAPI = {
   },
 
   /**
-   * Get classes for admin/teacher schedule management
-   */
-  getManageClasses: async (params = {}) => {
-    try {
-      const response = await apiClient.get('/class/manage', { params });
-      return handleResponse(response);
-    } catch (error) {
-      throw handleError(error);
-    }
-  },
-
-  /**
    * Get class by ID
    */
   getClass: async (id) => {

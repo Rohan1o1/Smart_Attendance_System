@@ -89,6 +89,16 @@ const classSchema = new mongoose.Schema({
     }
   },
 
+  section: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    enum: {
+      values: ['A', 'B'],
+      message: 'Section must be either A or B'
+    }
+  },
+
   // Schedule Information
   schedule: {
     dayOfWeek: {

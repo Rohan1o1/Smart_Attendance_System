@@ -25,36 +25,9 @@ const emptyDraft = {
   startTime: '09:00',
   endTime: '10:00',
   classroom: '',
-  description: ''
+  description: '',
+  teacherId: ''
 };
-
-const colorClasses = [
-  'bg-sky-50 border-sky-300 text-sky-900',
-  'bg-emerald-50 border-emerald-300 text-emerald-900',
-  'bg-violet-50 border-violet-300 text-violet-900',
-  'bg-amber-50 border-amber-300 text-amber-900',
-  'bg-rose-50 border-rose-300 text-rose-900',
-  'bg-cyan-50 border-cyan-300 text-cyan-900',
-  'bg-lime-50 border-lime-300 text-lime-900'
-];
-
-const toMinutes = (time) => {
-  const [hours, minutes] = String(time || '00:00').split(':').map(Number);
-  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
-};
-
-const fromMinutes = (minutes) => {
-  const hours = Math.floor(minutes / 60).toString().padStart(2, '0');
-  const mins = (minutes % 60).toString().padStart(2, '0');
-  return `${hours}:${mins}`;
-};
-
-const getDefaultAcademicYear = () => {
-  const currentYear = new Date().getFullYear();
-  return `${currentYear}-${currentYear + 1}`;
-};
-
-const getClassId = (classItem) => classItem?._id || classItem?.id;
 
 const ClassesPage = () => {
   const { user } = useAuth();
@@ -219,6 +192,16 @@ const ClassesPage = () => {
   }, []);
 
   useEffect(() => {
+    if (user?.role === 'admin' && user.department) {
+      setForm((current) => ({
+        ...current,
+        department: current.department || user.department,
+        section: current.section || 'A'
+      }));
+    }
+  }, [user]);
+
+  useEffect(() => {
     fetchClasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.department, filters.semester, filters.section, filters.teacherId]);
@@ -242,18 +225,28 @@ const ClassesPage = () => {
   };
 
   const fetchClasses = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      setError('');
-      const params = {};
-      if (filters.department) params.department = filters.department;
-      if (filters.semester) params.semester = filters.semester;
-      if (filters.section) params.section = filters.section;
-      if (filters.teacherId) params.teacherId = filters.teacherId;
-
-      const response = await classAPI.getManageClasses(params);
-      if (response.success) {
-        setClasses(response.data?.classes || response.data || []);
+      // Try teacher endpoint when client thinks user is teacher; fallback to active classes on 403
+      let res;
+      if (user && user.role === 'teacher') {
+        try {
+          res = await classAPI.getMyClasses({ page: 1, limit: 100 });
+        } catch (err) {
+          // If server rejects due to role mismatch, fallback to active classes
+          if (err.status === 403 || (err.message && err.message.includes('Required role'))) {
+            res = await classAPI.getActiveClasses({});
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        res = await classAPI.getActiveClasses({});
+      }
+      if (res.success && res.data && res.data.classes) {
+        setClasses(res.data.classes);
+      } else if (res.success && Array.isArray(res.data)) {
+        setClasses(res.data);
       } else {
         setClasses([]);
         setError(response.message || 'Failed to load schedule');
@@ -376,22 +369,88 @@ const ClassesPage = () => {
         return;
       }
 
-      setDraft(null);
-      await fetchClasses();
-    } catch (err) {
-      setError(err.message || 'Failed to save class');
-    } finally {
-      setSaving(false);
-    }
-  };
+      // If admin is creating the class, require teacher selection
+      if (user && user.role === 'admin' && !form.teacherId) {
+        setError('Please select a teacher to assign this class to');
+        setLoading(false);
+        return;
+      }
+      // Build payload matching server validation schema
+      const semesterNum = (() => {
+        if (!form.semester) return null;
+        const m = String(form.semester).match(/(\d+)/);
+        return m ? parseInt(m[1], 10) : parseInt(form.semester, 10) || null;
+      })();
 
-  const deleteDraft = async () => {
-    if (!draft?._id || !window.confirm('Delete this scheduled class?')) return;
-    try {
-      setSaving(true);
-      await classAPI.deleteClass(draft._id);
-      setDraft(null);
-      await fetchClasses();
+      const currentYear = new Date().getFullYear();
+      const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
+
+      // compute schedule and duration from form fields
+      const start = form.scheduleStartTime || (Array.isArray(form.schedule) && form.schedule[0]?.startTime) || '09:00';
+      const end = form.scheduleEndTime || (Array.isArray(form.schedule) && form.schedule[0]?.endTime) || '10:00';
+      const day = form.scheduleDay || (Array.isArray(form.schedule) && form.schedule[0]?.dayOfWeek) || 'Monday';
+
+      const parseMinutes = (hhmm) => {
+        const [h, m] = String(hhmm).split(':').map(Number);
+        return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+      };
+
+      const durationMinutes = parseMinutes(end) - parseMinutes(start);
+      if (durationMinutes <= 0) {
+        setError('End time must be after start time');
+        setLoading(false);
+        return;
+      }
+
+      const scheduleObj = {
+        dayOfWeek: day,
+        startTime: start,
+        endTime: end,
+        duration: durationMinutes
+      };
+
+      const payload = {
+        subject: form.subject,
+        subjectCode: (form.subjectCode || '').toUpperCase(),
+        department: form.department,
+        semester: semesterNum || 1,
+        academicYear: form.academicYear && /\d{4}-\d{4}/.test(form.academicYear) ? form.academicYear : defaultAcademicYear,
+        // send computed schedule with duration
+        schedule: scheduleObj,
+        geofenceRadius: form.geofenceRadius || 20,
+        classroom: form.classroom || undefined,
+        description: form.description || undefined,
+        teacherId: form.teacherId
+      };
+
+      // Remove empty string or undefined fields so Joi optional fields don't trigger 'is not allowed to be empty'
+      Object.keys(payload).forEach(key => {
+        const val = payload[key];
+        if (val === '' || val === null || typeof val === 'undefined') {
+          delete payload[key];
+        }
+      });
+
+      if (editingId) {
+        const res = await classAPI.updateClass(editingId, payload);
+        console.debug('Update class response', res);
+        if (res.success) {
+          await fetchClasses();
+          setForm(emptyForm);
+          setEditingId(null);
+        } else {
+          setError(res.errors || res.message || 'Failed to update class');
+        }
+      } else {
+        const res = await classAPI.createClass(payload);
+        console.debug('Create class response', res);
+        if (res.success) {
+          await fetchClasses();
+          setForm(emptyForm);
+        } else {
+          setError(res.errors || res.message || 'Failed to create class');
+        }
+      }
     } catch (err) {
       setError(err.message || 'Failed to delete class');
     } finally {
@@ -399,38 +458,35 @@ const ClassesPage = () => {
     }
   };
 
-  const handleDrop = async (dayOfWeek, startTime) => {
-    if (!draggedClassId || BREAK_SLOTS.has(startTime)) return;
-    const classItem = classes.find((item) => getClassId(item) === draggedClassId);
-    setDraggedClassId(null);
-    if (!classItem) return;
-
-    const endTime = fromMinutes(toMinutes(startTime) + Math.max(DEFAULT_DURATION_MINUTES, toMinutes(classItem.schedule?.endTime) - toMinutes(classItem.schedule?.startTime)));
-    const conflict = classes.find((item) => {
-      if (getClassId(item) === draggedClassId) return false;
-      const sameSlot = item.schedule?.dayOfWeek === dayOfWeek && item.schedule?.startTime === startTime;
-      if (!sameSlot) return false;
-      const sameTeacher = String(item.teacherId?._id || item.teacherId) === String(classItem.teacherId?._id || classItem.teacherId);
-      const sameGroup = item.department === classItem.department &&
-        Number(item.semester) === Number(classItem.semester) &&
-        String(item.section || '').toUpperCase() === String(classItem.section || '').toUpperCase();
-      return sameTeacher || sameGroup;
+  const handleEdit = (cls) => {
+    setEditingId(cls._id);
+    setForm({
+      subject: cls.subject || '',
+      subjectCode: cls.subjectCode || '',
+      department: cls.department || '',
+  semester: cls.semester || '',
+  academicYear: cls.academicYear || '',
+  schedule: cls.schedule || [],
+  scheduleDay: cls.schedule?.dayOfWeek || (cls.schedule && cls.schedule[0]?.dayOfWeek) || 'Monday',
+  scheduleStartTime: cls.schedule?.startTime || (cls.schedule && cls.schedule[0]?.startTime) || '09:00',
+  scheduleEndTime: cls.schedule?.endTime || (cls.schedule && cls.schedule[0]?.endTime) || '10:00',
+  geofenceRadius: cls.geofenceRadius || 20,
+      classroom: cls.classroom || '',
+      description: cls.description || '',
+      teacherId: cls.teacherId?._id || ''
     });
+  };
 
-    if (conflict) {
-      setError('Cannot move class: schedule conflict detected.');
-      return;
-    }
-
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this class?')) return;
+    setLoading(true);
     try {
-      await classAPI.updateClass(draggedClassId, {
-        schedule: {
-          dayOfWeek,
-          startTime,
-          endTime
-        }
-      });
-      await fetchClasses();
+      const res = await classAPI.deleteClass(id);
+      if (res.success) {
+        await fetchClasses();
+      } else {
+        setError(res.message || 'Failed to delete class');
+      }
     } catch (err) {
       setError(err.message || 'Failed to move class');
     }
@@ -651,28 +707,10 @@ const ClassesPage = () => {
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-gray-600">Day</span>
-                  <select name="dayOfWeek" value={draft.dayOfWeek} onChange={updateDraft} className="input w-full">
-                    {DAYS.map((day) => (
-                      <option key={day} value={day}>{day}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-gray-600">Start</span>
-                  <input type="time" name="startTime" value={draft.startTime} onChange={updateDraft} className="input w-full" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-gray-600">End</span>
-                  <input type="time" name="endTime" value={draft.endTime} onChange={updateDraft} className="input w-full" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-gray-600">Academic Year</span>
-                  <input name="academicYear" value={draft.academicYear} onChange={updateDraft} className="input w-full" />
-                </label>
-              </div>
+            <div className="flex items-center space-x-2">
+              <button type="submit" className="btn btn-primary" disabled={loading}>{editingId ? 'Update' : 'Create'}</button>
+              {editingId && <button type="button" onClick={() => { setEditingId(null); setForm(emptyForm); }} className="btn">Cancel</button>}
+            </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="space-y-1">

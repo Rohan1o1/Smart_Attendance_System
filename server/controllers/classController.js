@@ -3,6 +3,8 @@ const User = require('../models/User');
 const { locationService } = require('../services');
 const config = require('../config');
 
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
  * Class Controller
  * Handles class creation, session management, and enrollment
@@ -22,6 +24,7 @@ const createClass = async (req, res) => {
       semester,
       section,
       academicYear,
+      section,
       schedule,
       geofenceRadius,
       classroom,
@@ -33,8 +36,8 @@ const createClass = async (req, res) => {
     let teacherId = req.user._id;
 
     // If admin is creating the class, allow specifying teacherId in body
-    if (req.user.role === 'admin' && requestedTeacherId) {
-      teacherId = requestedTeacherId;
+    if (req.user.role === 'admin' && req.body.teacherId) {
+      teacherId = req.body.teacherId;
     }
 
     // Only teachers or admins may create classes
@@ -42,45 +45,6 @@ const createClass = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: 'Only teachers or admins can create classes'
-      });
-    }
-
-    const teacher = await User.findOne({
-      _id: teacherId,
-      role: 'teacher',
-      department,
-      isActive: true
-    });
-
-    if (!teacher) {
-      return res.status(400).json({
-        success: false,
-        message: 'Selected teacher was not found in this department'
-      });
-    }
-
-    const normalizedSection = section ? String(section).trim().toUpperCase() : undefined;
-    const normalizedYear = year || Math.ceil(Number(semester) / 2);
-
-    const conflictQuery = {
-      isActive: true,
-      'schedule.dayOfWeek': schedule.dayOfWeek,
-      'schedule.startTime': schedule.startTime,
-      $or: [
-        { teacherId },
-        {
-          department,
-          semester,
-          section: normalizedSection
-        }
-      ]
-    };
-
-    const existingConflict = await Class.findOne(conflictQuery);
-    if (existingConflict) {
-      return res.status(409).json({
-        success: false,
-        message: 'Schedule conflict detected for this teacher or student group at the selected time'
       });
     }
 
@@ -93,12 +57,12 @@ const createClass = async (req, res) => {
       subject,
       subjectCode: subjectCode.toUpperCase(),
       teacherId,
-      teacherName: `${teacher.firstName} ${teacher.lastName}`,
+      teacherName: `${req.user.firstName} ${req.user.lastName}`,
       department,
-      year: normalizedYear,
       semester,
       section: normalizedSection,
       academicYear,
+      section: section ? String(section).toUpperCase() : undefined,
       schedule,
       geofenceRadius: geofenceRadius || 20,
       classroom,
@@ -514,6 +478,54 @@ const getActiveClasses = async (req, res) => {
 };
 
 /**
+ * Get classes for admin routine view
+ * GET /class/admin/routines
+ */
+const getAdminRoutines = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can access routines'
+      });
+    }
+
+    const { semester, section } = req.query;
+    const query = { isActive: true };
+    const departmentTeachers = await User.find({
+      role: 'teacher',
+      department: req.user.department,
+      isActive: true
+    }).select('_id');
+    const teacherIds = departmentTeachers.map((teacher) => teacher._id);
+
+    if (req.user.department) {
+      query.$or = [
+        { department: new RegExp(`^${escapeRegExp(req.user.department)}$`, 'i') },
+        { teacherId: { $in: teacherIds } }
+      ];
+    }
+    if (semester) query.semester = parseInt(semester, 10);
+    if (section) query.section = String(section).toUpperCase();
+
+    const classes = await Class.find(query)
+      .populate('teacherId', 'firstName lastName email employeeId')
+      .sort({ academicYear: -1, semester: 1, 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+
+    res.json({
+      success: true,
+      data: { classes }
+    });
+  } catch (error) {
+    console.error('Get admin routines error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch routines'
+    });
+  }
+};
+
+/**
  * Enroll students in class
  * POST /class/:id/enroll
  */
@@ -646,89 +658,21 @@ const updateClass = async (req, res) => {
     const updates = req.body;
 
     // Remove fields that shouldn't be updated directly
-    const restrictedFields = ['classId', 'teacherName', 'createdBy', 'statistics'];
-    if (req.user.role !== 'admin') {
-      restrictedFields.push('teacherId');
-    }
+    const restrictedFields = ['classId', 'teacherId', 'teacherName', 'createdBy', 'statistics'];
     restrictedFields.forEach(field => delete updates[field]);
 
-    if (updates.section) {
-      updates.section = String(updates.section).trim().toUpperCase();
-    }
-
-    if (updates.semester && !updates.year) {
-      updates.year = Math.ceil(Number(updates.semester) / 2);
-    }
-
-    const query = {
-      _id: id,
-      isActive: true
-    };
-
-    if (req.user.role === 'teacher') {
-      query.teacherId = req.user._id;
-    } else if (req.user.role === 'admin') {
-      query.department = req.user.department;
-    }
-
-    if (updates.teacherId && req.user.role === 'admin') {
-      const teacher = await User.findOne({
-        _id: updates.teacherId,
-        role: 'teacher',
-        department: req.user.department,
+    const classObj = await Class.findOneAndUpdate(
+      {
+        _id: id,
+        teacherId,
         isActive: true
-      });
-
-      if (!teacher) {
-        return res.status(400).json({
-          success: false,
-          message: 'Selected teacher was not found in your department'
-        });
+      },
+      updates,
+      {
+        new: true,
+        runValidators: true
       }
-
-      updates.teacherName = `${teacher.firstName} ${teacher.lastName}`;
-    }
-
-    const nextClassData = await Class.findOne(query);
-    if (!nextClassData) {
-      return res.status(404).json({
-        success: false,
-        message: 'Class not found or you are not authorized'
-      });
-    }
-
-    const nextTeacherId = updates.teacherId || nextClassData.teacherId;
-    const nextDepartment = updates.department || nextClassData.department;
-    const nextSemester = updates.semester || nextClassData.semester;
-    const nextSection = updates.section || nextClassData.section;
-    const nextSchedule = updates.schedule || nextClassData.schedule;
-
-    const conflict = await Class.findOne({
-      _id: { $ne: id },
-      isActive: true,
-      'schedule.dayOfWeek': nextSchedule.dayOfWeek,
-      'schedule.startTime': nextSchedule.startTime,
-      $or: [
-        { teacherId: nextTeacherId },
-        {
-          department: nextDepartment,
-          semester: nextSemester,
-          section: nextSection
-        }
-      ]
-    });
-
-    if (conflict) {
-      return res.status(409).json({
-        success: false,
-        message: 'Schedule conflict detected for this teacher or student group at the selected time'
-      });
-    }
-
-    const classObj = await Class.findOneAndUpdate(query, updates, {
-      new: true,
-      runValidators: true
-    }).populate('teacherId', 'firstName lastName email teacherId');
+    ).populate('teacherId', 'firstName lastName email');
 
     if (!classObj) {
       return res.status(404).json({
@@ -900,6 +844,7 @@ module.exports = {
   startClassSession,
   endClassSession,
   getActiveClasses,
+  getAdminRoutines,
   enrollStudents,
   dropStudent,
   updateClass,
