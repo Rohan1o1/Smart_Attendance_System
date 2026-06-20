@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { adminAPI } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 
-const UserCard = ({ user, onVerify, onReject }) => (
+const UserCard = ({ user, onVerify, onReject, onRemove }) => (
   <div className="p-4 border rounded mb-3 flex items-center justify-between">
     <div>
       <div className="font-semibold">{user.firstName} {user.lastName} {user.studentId || user.teacherId || ''}</div>
@@ -11,6 +12,15 @@ const UserCard = ({ user, onVerify, onReject }) => (
     <div className="space-x-2">
       {onVerify && <button className="btn btn-success btn-sm" onClick={() => onVerify(user._id)}>Verify</button>}
       {onReject && <button className="btn btn-ghost btn-sm" onClick={() => onReject(user._id)}>Reject</button>}
+      {onRemove && (
+        <button
+          className="btn btn-danger btn-sm inline-flex items-center gap-2"
+          onClick={() => onRemove(user)}
+        >
+          <Trash2 className="w-4 h-4" />
+          Remove
+        </button>
+      )}
     </div>
   </div>
 );
@@ -67,6 +77,21 @@ const UserManagement = () => {
     }
   };
 
+  const handleRemoveVerified = async (user) => {
+    if (!user?.verified || !window.confirm(`Remove ${user.firstName} ${user.lastName}?`)) {
+      return;
+    }
+
+    try {
+      const res = await adminAPI.deactivateUser(user._id);
+      if (res.success) {
+        loadUsers();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -88,7 +113,7 @@ const UserManagement = () => {
         <div className="card p-4">
           <h3 className="font-semibold mb-3">Verified Users ({verified.length})</h3>
           {!loading && verified.length === 0 && <div className="text-sm text-secondary-600">No verified users</div>}
-          {!loading && Array.isArray(verified) && verified.map(u => <UserCard key={u._id} user={u} />)}
+          {!loading && Array.isArray(verified) && verified.map(u => <UserCard key={u._id} user={u} onRemove={handleRemoveVerified} />)}
         </div>
 
         <div className="card p-4">

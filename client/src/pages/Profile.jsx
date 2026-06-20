@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera, Edit3, Save, X, User, Mail, Phone, MapPin, Calendar, Shield, Eye, Upload, CheckCircle, RefreshCw } from 'lucide-react';
+import { Camera, Edit3, Save, X, User, Mail, Phone, MapPin, Calendar, Shield, Eye, Upload, CheckCircle, RefreshCw, Building, BookOpen, Users } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { userAPI } from '../services/api';
 import { toast } from 'react-hot-toast';
@@ -26,13 +26,32 @@ const Profile = () => {
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     email: user?.email || '',
-    phone: user?.phone || '',
+    phoneNumber: user?.phoneNumber || user?.phone || '',
     address: user?.address || ''
   });
   const fileInputRef = useRef(null);
 
   // Load face status on component mount
   useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const response = await userAPI.getProfile();
+        const latestUser = response.data?.user || response.data;
+        if (latestUser) {
+          updateUser(latestUser);
+          setFormData({
+            firstName: latestUser.firstName || '',
+            lastName: latestUser.lastName || '',
+            email: latestUser.email || '',
+            phoneNumber: latestUser.phoneNumber || latestUser.phone || '',
+            address: latestUser.address || ''
+          });
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
+    };
+
     const loadFaceStatus = async () => {
       try {
         setFaceStatusLoading(true);
@@ -48,6 +67,7 @@ const Profile = () => {
       }
     };
 
+    loadProfile();
     loadFaceStatus();
   }, []);
 
@@ -105,7 +125,7 @@ const Profile = () => {
     setLoading(true);
     try {
       const response = await userAPI.updateProfile(formData);
-      updateUser(response.data);
+      updateUser(response.data?.user || response.data);
       setIsEditing(false);
       toast.success('Profile updated successfully!');
     } catch (error) {
@@ -121,7 +141,7 @@ const Profile = () => {
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
       email: user?.email || '',
-      phone: user?.phone || '',
+      phoneNumber: user?.phoneNumber || user?.phone || '',
       address: user?.address || ''
     });
     setIsEditing(false);
@@ -418,8 +438,8 @@ const Profile = () => {
                       <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-secondary-400" />
                       <input
                         type="tel"
-                        name="phone"
-                        value={formData.phone}
+                        name="phoneNumber"
+                        value={formData.phoneNumber}
                         onChange={handleInputChange}
                         disabled={!isEditing}
                         className="input-field pl-10"
@@ -477,6 +497,110 @@ const Profile = () => {
                     />
                   </div>
                 </div>
+
+                {(user?.role === 'student' || user?.role === 'teacher' || user?.role === 'admin') && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t">
+                    <div>
+                      <label className="block text-sm font-medium text-secondary-700 mb-2">
+                        Department
+                      </label>
+                      <div className="relative">
+                        <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                        <input
+                          type="text"
+                          value={user?.department || 'N/A'}
+                          disabled
+                          className="input-field pl-10 bg-gray-50"
+                        />
+                      </div>
+                    </div>
+
+                    {user?.role === 'student' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-2">
+                            Year
+                          </label>
+                          <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                            <input
+                              type="text"
+                              value={user?.year || 'N/A'}
+                              disabled
+                              className="input-field pl-10 bg-gray-50"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-2">
+                            Semester
+                          </label>
+                          <div className="relative">
+                            <BookOpen className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                            <input
+                              type="text"
+                              value={user?.semester || 'N/A'}
+                              disabled
+                              className="input-field pl-10 bg-gray-50"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-2">
+                            Section
+                          </label>
+                          <div className="relative">
+                            <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-secondary-400" />
+                            <input
+                              type="text"
+                              value={user?.section || 'N/A'}
+                              disabled
+                              className="input-field pl-10 bg-gray-50"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {user?.role === 'teacher' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-2">
+                            Assigned Year
+                          </label>
+                          <input
+                            type="text"
+                            value={user?.assignedYear || 'Not assigned'}
+                            disabled
+                            className="input-field bg-gray-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-2">
+                            Assigned Semester
+                          </label>
+                          <input
+                            type="text"
+                            value={user?.assignedSemester || 'Not assigned'}
+                            disabled
+                            className="input-field bg-gray-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-secondary-700 mb-2">
+                            Assigned Section
+                          </label>
+                          <input
+                            type="text"
+                            value={user?.assignedSection || 'Not assigned'}
+                            disabled
+                            className="input-field bg-gray-50"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex gap-4 pt-6 border-t">

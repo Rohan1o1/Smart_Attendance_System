@@ -37,6 +37,8 @@ import TeacherStudents from './pages/teacher/Students';
 import AdminDashboard from './pages/admin/Dashboard';
 import UserManagement from './pages/admin/UserManagement';
 import AdminClasses from './pages/admin/Classes';
+import AdminAnalytics from './pages/admin/Analytics';
+import AdminRoutines from './pages/admin/Attendance';
 import SuperAdminDashboard from './pages/superadmin/Dashboard';
 import Profile from './pages/Profile';
 import NotFoundPage from './pages/error/NotFound';
@@ -232,9 +234,9 @@ const AppRouter = () => {
                 <Route index element={<AdminDashboard />} />
                 <Route path="users" element={<UserManagement />} />
                 <Route path="classes" element={<AdminClasses />} />
-                <Route path="attendance" element={<div>Admin Attendance</div>} />
-                <Route path="analytics" element={<div>Admin Analytics</div>} />
-                <Route path="settings" element={<div>Admin Settings</div>} />
+                <Route path="routines" element={<AdminRoutines />} />
+                <Route path="attendance" element={<Navigate to="/admin/routines" replace />} />
+                <Route path="analytics" element={<AdminAnalytics />} />
                 <Route path="profile" element={<Profile />} />
               </Routes>
             </Layout>

@@ -4,6 +4,10 @@ const { locationService } = require('../services');
 const config = require('../config');
 const mongoose = require('mongoose');
 
+const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const getTeacherDisplayName = (teacher) => `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim();
+
 /**
  * Class Controller
  * Handles class creation, session management, and enrollment
@@ -19,13 +23,17 @@ const createClass = async (req, res) => {
       subject,
       subjectCode,
       department,
+      year,
       semester,
+      section,
       academicYear,
       schedule,
       geofenceRadius,
       classroom,
-      description
+      description,
+      teacherId: requestedTeacherId
     } = req.body;
+    const normalizedSection = section ? String(section).trim().toUpperCase() : undefined;
 
     // Determine teacher for the class
     let teacherId = req.user._id;
@@ -54,7 +62,9 @@ const createClass = async (req, res) => {
       teacherId,
       teacherName: `${req.user.firstName} ${req.user.lastName}`,
       department,
+      year,
       semester,
+      section: normalizedSection,
       academicYear,
       schedule,
       geofenceRadius: geofenceRadius || 20,
@@ -67,7 +77,7 @@ const createClass = async (req, res) => {
     await newClass.save();
 
     // Populate teacher information
-    await newClass.populate('teacherId', 'firstName lastName email employeeId');
+    await newClass.populate('teacherId', 'firstName lastName email teacherId');
 
     res.status(201).json({
       success: true,
@@ -77,7 +87,7 @@ const createClass = async (req, res) => {
 
   } catch (error) {
     console.error('Create class error:', error);
-    
+
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -161,15 +171,55 @@ const getTeacherClasses = async (req, res) => {
 };
 
 /**
+ * Get classes for admin/teacher schedule management
+ * GET /class/manage
+ */
+const getManageClasses = async (req, res) => {
+  try {
+    const { department, year, semester, section, teacherId } = req.query;
+    const query = { isActive: true };
+
+    if (req.user.role === 'admin') {
+      query.department = req.user.department;
+    } else if (req.user.role === 'teacher') {
+      query.teacherId = req.user._id;
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins and teachers can manage schedules'
+      });
+    }
+
+    if (department && req.user.role !== 'admin') query.department = department;
+    if (year) query.year = parseInt(year, 10);
+    if (semester) query.semester = parseInt(semester, 10);
+    if (section) query.section = String(section).trim().toUpperCase();
+    if (teacherId) query.teacherId = teacherId;
+
+    const classes = await Class.find(query)
+      .populate('teacherId', 'firstName lastName email teacherId assignedYear assignedSemester assignedSection')
+      .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+
+    res.json({
+      success: true,
+      data: { classes }
+    });
+  } catch (error) {
+    console.error('Get manage classes error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch schedule classes'
+    });
+  }
+};
+
+/**
  * Get classes for student
  * GET /class/enrolled
  */
 const getEnrolledClasses = async (req, res) => {
   try {
     const studentId = req.user._id;
-
-    // First try to find classes where the student is explicitly enrolled
-    // Be defensive: enrolledStudents.studentId may be stored as ObjectId or string
     const tryObjectId = (() => {
       try { return mongoose.Types.ObjectId(studentId); } catch (e) { return null; }
     })();
@@ -178,36 +228,58 @@ const getEnrolledClasses = async (req, res) => {
     if (tryObjectId) orConditions.push({ 'enrolledStudents.studentId': tryObjectId });
     orConditions.push({ 'enrolledStudents.studentId': String(studentId) });
 
-    let classes = await Class.find({
-      isActive: true,
+    const explicitEnrollmentQuery = {
       'enrolledStudents.status': 'enrolled',
       $or: orConditions
-    })
-    .populate('teacherId', 'firstName lastName email employeeId')
-    .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+    };
 
-    console.debug(`getEnrolledClasses: studentId=${studentId} matched explicit enrollments: ${classes.length}`);
-
-    // If no enrolled classes found, or the client requested a department/semester/section filter,
-    // return classes that match the student's assignment (department/semester/section).
     const { department, semester, section } = req.query;
-    const hasFilterParams = !!(department || semester || section);
+    const filterDepartment = department || req.user.department;
+    const filterSemester = semester || req.user.semester;
+    const filterYear = req.user.year || (filterSemester ? Math.ceil(parseInt(filterSemester, 10) / 2) : undefined);
+    const filterSection = section || req.user.section;
 
-    if ((classes.length === 0) || hasFilterParams) {
-      const filterDepartment = department || req.user.department;
-      const filterSemester = semester || req.user.semester;
-      const filterSection = section || req.user.section;
+    const assignmentQuery = {};
+    if (filterDepartment) assignmentQuery.department = filterDepartment;
+    if (filterSemester) assignmentQuery.semester = parseInt(filterSemester, 10);
 
-      const filterQuery = { isActive: true };
-      if (filterDepartment) filterQuery.department = filterDepartment;
-      if (filterSemester) filterQuery.semester = parseInt(filterSemester);
-      if (filterSection) filterQuery.section = filterSection;
-
-      // Find classes matching the assignment. Note: these are available classes, not necessarily enrolled.
-      classes = await Class.find(filterQuery)
-        .populate('teacherId', 'firstName lastName email employeeId')
-        .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+    const assignmentAnd = [];
+    if (filterYear) {
+      assignmentAnd.push({
+        $or: [
+          { year: parseInt(filterYear, 10) },
+          { year: { $exists: false } },
+          { year: null }
+        ]
+      });
     }
+    if (filterSection) {
+      assignmentAnd.push({
+        $or: [
+          { section: String(filterSection).trim().toUpperCase() },
+          { section: { $exists: false } },
+          { section: null },
+          { section: '' }
+        ]
+      });
+    }
+
+    if (assignmentAnd.length > 0) {
+      assignmentQuery.$and = assignmentAnd;
+    }
+
+    const query = {
+      isActive: true,
+      $or: [explicitEnrollmentQuery]
+    };
+
+    if (Object.keys(assignmentQuery).length > 0) {
+      query.$or.push(assignmentQuery);
+    }
+
+    const classes = await Class.find(query)
+      .populate('teacherId', 'firstName lastName email employeeId')
+      .sort({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
 
     res.json({
       success: true,
@@ -355,8 +427,47 @@ const getActiveClasses = async (req, res) => {
 
     // If student, only show classes they're enrolled in
     if (role === 'student') {
-      query['enrolledStudents.studentId'] = req.user._id;
-      query['enrolledStudents.status'] = 'enrolled';
+      const assignmentQuery = {};
+      if (req.user.department) assignmentQuery.department = req.user.department;
+      if (req.user.semester) assignmentQuery.semester = req.user.semester;
+
+      const assignmentAnd = [];
+      const studentYear = req.user.year || (req.user.semester ? Math.ceil(Number(req.user.semester) / 2) : undefined);
+      if (studentYear) {
+        assignmentAnd.push({
+          $or: [
+            { year: studentYear },
+            { year: { $exists: false } },
+            { year: null }
+          ]
+        });
+      }
+      if (req.user.section) {
+        assignmentAnd.push({
+          $or: [
+            { section: String(req.user.section).trim().toUpperCase() },
+            { section: { $exists: false } },
+            { section: null },
+            { section: '' }
+          ]
+        });
+      }
+      if (assignmentAnd.length > 0) {
+        assignmentQuery.$and = assignmentAnd;
+      }
+
+      const studentClassQueries = [
+        {
+          'enrolledStudents.studentId': req.user._id,
+          'enrolledStudents.status': 'enrolled'
+        }
+      ];
+
+      if (Object.keys(assignmentQuery).length > 0) {
+        studentClassQueries.push(assignmentQuery);
+      }
+
+      query.$or = studentClassQueries;
     }
 
     const classes = await Class.find(query)
@@ -373,6 +484,54 @@ const getActiveClasses = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch active classes'
+    });
+  }
+};
+
+/**
+ * Get classes for admin routine view
+ * GET /class/admin/routines
+ */
+const getAdminRoutines = async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can access routines'
+      });
+    }
+
+    const { semester, section } = req.query;
+    const query = { isActive: true };
+    const departmentTeachers = await User.find({
+      role: 'teacher',
+      department: req.user.department,
+      isActive: true
+    }).select('_id');
+    const teacherIds = departmentTeachers.map((teacher) => teacher._id);
+
+    if (req.user.department) {
+      query.$or = [
+        { department: new RegExp(`^${escapeRegExp(req.user.department)}$`, 'i') },
+        { teacherId: { $in: teacherIds } }
+      ];
+    }
+    if (semester) query.semester = parseInt(semester, 10);
+    if (section) query.section = String(section).toUpperCase();
+
+    const classes = await Class.find(query)
+      .populate('teacherId', 'firstName lastName email employeeId')
+      .sort({ academicYear: -1, semester: 1, 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
+
+    res.json({
+      success: true,
+      data: { classes }
+    });
+  } catch (error) {
+    console.error('Get admin routines error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch routines'
     });
   }
 };
@@ -508,18 +667,44 @@ const updateClass = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
-    const teacherId = req.user._id;
+    const requestedTeacherId = updates.teacherId;
 
     // Remove fields that shouldn't be updated directly
     const restrictedFields = ['classId', 'teacherId', 'teacherName', 'createdBy', 'statistics'];
     restrictedFields.forEach(field => delete updates[field]);
 
-    const classObj = await Class.findOneAndUpdate(
-      {
-        _id: id,
-        teacherId,
+    const query = {
+      _id: id,
+      isActive: true
+    };
+
+    if (req.user.role === 'teacher') {
+      query.teacherId = req.user._id;
+    } else if (req.user.role === 'admin') {
+      query.department = req.user.department;
+    }
+
+    if (req.user.role === 'admin' && requestedTeacherId) {
+      const teacher = await User.findOne({
+        _id: requestedTeacherId,
+        role: 'teacher',
+        department: req.user.department,
         isActive: true
-      },
+      });
+
+      if (!teacher) {
+        return res.status(400).json({
+          success: false,
+          message: 'Selected teacher was not found in your department'
+        });
+      }
+
+      updates.teacherId = requestedTeacherId;
+      updates.teacherName = getTeacherDisplayName(teacher);
+    }
+
+    const classObj = await Class.findOneAndUpdate(
+      query,
       updates,
       {
         new: true,
@@ -542,7 +727,7 @@ const updateClass = async (req, res) => {
 
   } catch (error) {
     console.error('Update class error:', error);
-    
+
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -566,13 +751,19 @@ const updateClass = async (req, res) => {
 const deleteClass = async (req, res) => {
   try {
     const { id } = req.params;
-    const teacherId = req.user._id;
 
-    const classObj = await Class.findOne({
+    const query = {
       _id: id,
-      teacherId,
       isActive: true
-    });
+    };
+
+    if (req.user.role === 'teacher') {
+      query.teacherId = req.user._id;
+    } else if (req.user.role === 'admin') {
+      query.department = req.user.department;
+    }
+
+    const classObj = await Class.findOne(query);
 
     if (!classObj) {
       return res.status(404).json({
@@ -615,8 +806,47 @@ const getClassDetails = async (req, res) => {
     if (role === 'teacher') {
       query.teacherId = userId;
     } else if (role === 'student') {
-      query['enrolledStudents.studentId'] = userId;
-      query['enrolledStudents.status'] = 'enrolled';
+      const assignmentQuery = {};
+      if (req.user.department) assignmentQuery.department = req.user.department;
+      if (req.user.semester) assignmentQuery.semester = req.user.semester;
+
+      const assignmentAnd = [];
+      const studentYear = req.user.year || (req.user.semester ? Math.ceil(Number(req.user.semester) / 2) : undefined);
+      if (studentYear) {
+        assignmentAnd.push({
+          $or: [
+            { year: studentYear },
+            { year: { $exists: false } },
+            { year: null }
+          ]
+        });
+      }
+      if (req.user.section) {
+        assignmentAnd.push({
+          $or: [
+            { section: String(req.user.section).trim().toUpperCase() },
+            { section: { $exists: false } },
+            { section: null },
+            { section: '' }
+          ]
+        });
+      }
+      if (assignmentAnd.length > 0) {
+        assignmentQuery.$and = assignmentAnd;
+      }
+
+      const studentClassQueries = [
+        {
+          'enrolledStudents.studentId': userId,
+          'enrolledStudents.status': 'enrolled'
+        }
+      ];
+
+      if (Object.keys(assignmentQuery).length > 0) {
+        studentClassQueries.push(assignmentQuery);
+      }
+
+      query.$or = studentClassQueries;
     }
 
     const classObj = await Class.findOne(query)
@@ -646,11 +876,13 @@ const getClassDetails = async (req, res) => {
 
 module.exports = {
   createClass,
+  getManageClasses,
   getTeacherClasses,
   getEnrolledClasses,
   startClassSession,
   endClassSession,
   getActiveClasses,
+  getAdminRoutines,
   enrollStudents,
   dropStudent,
   updateClass,

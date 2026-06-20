@@ -467,7 +467,7 @@ export const userAPI = {
    */
   getProfile: async () => {
     try {
-      const response = await apiClient.get('/users/profile');
+      const response = await apiClient.get('/auth/me');
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -479,7 +479,7 @@ export const userAPI = {
    */
   updateProfile: async (profileData) => {
     try {
-      const response = await apiClient.put('/users/profile', profileData);
+      const response = await apiClient.put('/auth/me', profileData);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
@@ -683,6 +683,18 @@ export const classAPI = {
   getActiveClasses: async (params = {}) => {
     try {
       const response = await apiClient.get('/class/active', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  /**
+   * Get classes for admin/teacher schedule management
+   */
+  getManageClasses: async (params = {}) => {
+    try {
+      const response = await apiClient.get('/class/manage', { params });
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);

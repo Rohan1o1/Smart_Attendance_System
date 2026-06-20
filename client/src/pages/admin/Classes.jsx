@@ -1,53 +1,265 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, BookOpen, CalendarDays, Copy, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
 import { adminAPI, classAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
-const emptyForm = {
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SLOT_MINUTES = 30;
+const SCHEDULE_START_MINUTES = 9 * 60;
+const SCHEDULE_END_MINUTES = 17 * 60;
+const ROW_HEIGHT = 48;
+const toMinutes = (time) => {
+  const [hours, minutes] = String(time).split(':').map(Number);
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
+};
+
+const fromMinutes = (minutes) => {
+  const boundedMinutes = Math.max(0, Math.min(minutes, 23 * 60 + 59));
+  const hours = Math.floor(boundedMinutes / 60);
+  const mins = boundedMinutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const TIME_SLOTS = Array.from(
+  { length: (SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES },
+  (_, index) => fromMinutes(SCHEDULE_START_MINUTES + index * SLOT_MINUTES)
+);
+const BREAK_SLOTS = new Set(['12:00']);
+const DEFAULT_DURATION_MINUTES = 60;
+const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180];
+const DEFAULT_YEARS = [1, 2, 3, 4];
+const DEFAULT_SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
+const DEFAULT_SECTIONS = ['A', 'B', 'C', 'D'];
+const colorClasses = [
+  'border-blue-200 bg-blue-50 text-blue-900',
+  'border-emerald-200 bg-emerald-50 text-emerald-900',
+  'border-amber-200 bg-amber-50 text-amber-900',
+  'border-rose-200 bg-rose-50 text-rose-900',
+  'border-violet-200 bg-violet-50 text-violet-900',
+  'border-cyan-200 bg-cyan-50 text-cyan-900'
+];
+
+const getClassId = (classItem) => classItem?._id || classItem?.id;
+
+const getDefaultAcademicYear = () => {
+  const currentYear = new Date().getFullYear();
+  return `${currentYear}-${currentYear + 1}`;
+};
+
+const getClassDuration = (classItem) => {
+  const duration = Number(classItem?.schedule?.duration);
+  if (Number.isFinite(duration) && duration > 0) return duration;
+  const start = toMinutes(classItem?.schedule?.startTime);
+  const end = toMinutes(classItem?.schedule?.endTime);
+  return Math.max(SLOT_MINUTES, end - start || DEFAULT_DURATION_MINUTES);
+};
+
+const getClassEndTime = (classItem) => fromMinutes(toMinutes(classItem?.schedule?.startTime) + getClassDuration(classItem));
+
+const rangesOverlap = (startA, endA, startB, endB) => startA < endB && startB < endA;
+
+const emptyDraft = {
+  _id: '',
   subject: '',
   subjectCode: '',
+  teacherId: '',
   department: '',
+  year: '',
   semester: '',
+  section: '',
   academicYear: '',
-  // schedule form fields
-  schedule: [],
-  scheduleDay: 'Monday',
-  scheduleStartTime: '09:00',
-  scheduleEndTime: '10:00',
-  geofenceRadius: 20,
+  dayOfWeek: 'Monday',
+  startTime: '09:00',
+  endTime: '10:00',
+  durationMinutes: DEFAULT_DURATION_MINUTES,
   classroom: '',
-  description: '',
-  teacherId: ''
+  description: ''
 };
 
 const ClassesPage = () => {
-  const [teachers, setTeachers] = useState([]);
+  const { user } = useAuth();
+  const [users, setUsers] = useState([]);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
-  const [error, setError] = useState(null);
-  const { user } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [filters, setFilters] = useState({
+    department: user?.department || '',
+    year: '',
+    semester: '',
+    section: '',
+    teacherId: ''
+  });
+  const [draft, setDraft] = useState(null);
+  const [draggedClassId, setDraggedClassId] = useState(null);
+  const [copiedClass, setCopiedClass] = useState(null);
+
+  const teachers = useMemo(
+    () => users.filter((item) => item.role === 'teacher' && item.verified !== false),
+    [users]
+  );
+
+  const students = useMemo(
+    () => users.filter((item) => item.role === 'student'),
+    [users]
+  );
+
+  const departments = useMemo(() => {
+    const values = new Set();
+    if (user?.department) values.add(user.department);
+    users.forEach((item) => {
+      if (item.department) values.add(item.department);
+    });
+    return [...values].sort();
+  }, [user, users]);
+
+  const semesters = useMemo(() => {
+    const values = new Set();
+    students
+      .filter((item) => !filters.department || item.department === filters.department)
+      .forEach((item) => {
+        if (item.semester) values.add(Number(item.semester));
+      });
+    classes.forEach((item) => {
+      if ((!filters.department || item.department === filters.department) && item.semester) {
+        values.add(Number(item.semester));
+      }
+    });
+    DEFAULT_SEMESTERS.forEach((semester) => values.add(semester));
+    return [...values].sort((a, b) => a - b);
+  }, [classes, filters.department, students]);
+
+  const years = useMemo(() => {
+    const values = new Set();
+    students
+      .filter((item) => !filters.department || item.department === filters.department)
+      .forEach((item) => {
+        if (item.year) values.add(Number(item.year));
+      });
+    classes.forEach((item) => {
+      const classYear = item.year || (item.semester ? Math.ceil(Number(item.semester) / 2) : null);
+      if ((!filters.department || item.department === filters.department) && classYear) {
+        values.add(Number(classYear));
+      }
+    });
+    DEFAULT_YEARS.forEach((year) => values.add(year));
+    return [...values].sort((a, b) => a - b);
+  }, [classes, filters.department, students]);
+
+  const sections = useMemo(() => {
+    const values = new Set();
+    students
+      .filter((item) => !filters.department || item.department === filters.department)
+      .filter((item) => !filters.semester || Number(item.semester) === Number(filters.semester))
+      .forEach((item) => {
+        if (item.section) values.add(String(item.section).toUpperCase());
+      });
+    classes.forEach((item) => {
+      if (
+        (!filters.department || item.department === filters.department) &&
+        (!filters.semester || Number(item.semester) === Number(filters.semester)) &&
+        item.section
+      ) {
+        values.add(String(item.section).toUpperCase());
+      }
+    });
+    DEFAULT_SECTIONS.forEach((section) => values.add(section));
+    return [...values].sort();
+  }, [classes, filters.department, filters.semester, students]);
+
+  const filteredTeachers = useMemo(
+    () => teachers.filter((item) => !filters.department || item.department === filters.department),
+    [filters.department, teachers]
+  );
+
+  const draftTeachers = useMemo(() => {
+    const draftDepartment = draft?.department || filters.department;
+    return teachers.filter((item) => !draftDepartment || item.department === draftDepartment);
+  }, [draft?.department, filters.department, teachers]);
+
+  const draftSemesters = useMemo(() => {
+    if (!draft) return semesters;
+    const values = new Set();
+    students
+      .filter((item) => !draft.department || item.department === draft.department)
+      .filter((item) => !draft.year || Number(item.year) === Number(draft.year))
+      .forEach((item) => {
+        if (item.semester) values.add(Number(item.semester));
+      });
+    classes.forEach((item) => {
+      const classYear = item.year || (item.semester ? Math.ceil(Number(item.semester) / 2) : null);
+      if (
+        (!draft.department || item.department === draft.department) &&
+        (!draft.year || Number(classYear) === Number(draft.year)) &&
+        item.semester
+      ) {
+        values.add(Number(item.semester));
+      }
+    });
+    DEFAULT_SEMESTERS.forEach((semester) => values.add(semester));
+    return [...values].sort((a, b) => a - b);
+  }, [classes, draft, semesters, students]);
+
+  const draftSections = useMemo(() => {
+    if (!draft) return sections;
+    const values = new Set();
+    students
+      .filter((item) => !draft.department || item.department === draft.department)
+      .filter((item) => !draft.year || Number(item.year) === Number(draft.year))
+      .filter((item) => !draft.semester || Number(item.semester) === Number(draft.semester))
+      .forEach((item) => {
+        if (item.section) values.add(String(item.section).toUpperCase());
+      });
+    classes.forEach((item) => {
+      const classYear = item.year || (item.semester ? Math.ceil(Number(item.semester) / 2) : null);
+      if (
+        (!draft.department || item.department === draft.department) &&
+        (!draft.year || Number(classYear) === Number(draft.year)) &&
+        (!draft.semester || Number(item.semester) === Number(draft.semester)) &&
+        item.section
+      ) {
+        values.add(String(item.section).toUpperCase());
+      }
+    });
+    DEFAULT_SECTIONS.forEach((section) => values.add(section));
+    return [...values].sort();
+  }, [classes, draft, sections, students]);
+
+  const subjectColorMap = useMemo(() => {
+    const map = new Map();
+    classes.forEach((item) => {
+      const key = item.subjectCode || item.subject;
+      if (key && !map.has(key)) {
+        map.set(key, colorClasses[map.size % colorClasses.length]);
+      }
+    });
+    return map;
+  }, [classes]);
 
   useEffect(() => {
-    fetchTeachers();
-    fetchClasses();
+    fetchUsers();
   }, []);
 
-  const fetchTeachers = async () => {
-    setLoading(true);
+  useEffect(() => {
+    fetchClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.department, filters.year, filters.semester, filters.section, filters.teacherId]);
+
+  useEffect(() => {
+    if (!filters.department && departments.length > 0) {
+      setFilters((prev) => ({ ...prev, department: departments[0] }));
+    }
+  }, [departments, filters.department]);
+
+  const fetchUsers = async () => {
     try {
-      const res = await adminAPI.getTeachers({ perPage: 200 });
-      if (res.success && res.data && res.data.users) {
-        setTeachers(res.data.users);
-      } else if (res.success && Array.isArray(res.data)) {
-        setTeachers(res.data);
-      } else {
-        setTeachers([]);
+      setError('');
+      const response = await adminAPI.getDepartmentUsers({ limit: 500 });
+      if (response.success) {
+        setUsers(response.data?.users || response.data || []);
       }
     } catch (err) {
-      setError(err.message || 'Failed to load teachers');
-    } finally {
-      setLoading(false);
+      setError(err.message || 'Failed to load department users');
     }
   };
 
@@ -68,7 +280,7 @@ const ClassesPage = () => {
           }
         }
       } else {
-        res = await classAPI.getActiveClasses({});
+        res = await classAPI.getManageClasses(filters);
       }
       if (res.success && res.data && res.data.classes) {
         setClasses(res.data.classes);
@@ -76,256 +288,662 @@ const ClassesPage = () => {
         setClasses(res.data);
       } else {
         setClasses([]);
+        setError(res.message || 'Failed to load schedule');
       }
     } catch (err) {
-      setError(err.message || 'Failed to load classes');
+      setClasses([]);
+      setError(err.message || 'Failed to load schedule');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+  const handleFilterChange = (event) => {
+    const { name, value } = event.target;
+    setFilters((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === 'department' ? { semester: '', section: '', teacherId: '' } : {}),
+      ...(name === 'semester' ? { section: '' } : {})
+    }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Ensure token exists
-      const token = localStorage.getItem('accessToken');
-      if (!token) {
-        setError('Not authenticated. Please login again.');
-        setLoading(false);
-        return;
-      }
-
-      // If admin is creating the class, require teacher selection
-      if (user && user.role === 'admin' && !form.teacherId) {
-        setError('Please select a teacher to assign this class to');
-        setLoading(false);
-        return;
-      }
-      // Build payload matching server validation schema
-      const semesterNum = (() => {
-        if (!form.semester) return null;
-        const m = String(form.semester).match(/(\d+)/);
-        return m ? parseInt(m[1], 10) : parseInt(form.semester, 10) || null;
-      })();
-
-      const currentYear = new Date().getFullYear();
-      const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
-
-      // compute schedule and duration from form fields
-      const start = form.scheduleStartTime || (Array.isArray(form.schedule) && form.schedule[0]?.startTime) || '09:00';
-      const end = form.scheduleEndTime || (Array.isArray(form.schedule) && form.schedule[0]?.endTime) || '10:00';
-      const day = form.scheduleDay || (Array.isArray(form.schedule) && form.schedule[0]?.dayOfWeek) || 'Monday';
-
-      const parseMinutes = (hhmm) => {
-        const [h, m] = String(hhmm).split(':').map(Number);
-        return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
-      };
-
-      const durationMinutes = parseMinutes(end) - parseMinutes(start);
-      if (durationMinutes <= 0) {
-        setError('End time must be after start time');
-        setLoading(false);
-        return;
-      }
-
-      const scheduleObj = {
-        dayOfWeek: day,
-        startTime: start,
-        endTime: end,
-        duration: durationMinutes
-      };
-
-      const payload = {
-        subject: form.subject,
-        subjectCode: (form.subjectCode || '').toUpperCase(),
-        department: form.department,
-        semester: semesterNum || 1,
-        academicYear: form.academicYear && /\d{4}-\d{4}/.test(form.academicYear) ? form.academicYear : defaultAcademicYear,
-        // send computed schedule with duration
-        schedule: scheduleObj,
-        geofenceRadius: form.geofenceRadius || 20,
-        classroom: form.classroom || undefined,
-        description: form.description || undefined,
-        teacherId: form.teacherId
-      };
-
-      // Remove empty string or undefined fields so Joi optional fields don't trigger 'is not allowed to be empty'
-      Object.keys(payload).forEach(key => {
-        const val = payload[key];
-        if (val === '' || val === null || typeof val === 'undefined') {
-          delete payload[key];
-        }
-      });
-
-      if (editingId) {
-        const res = await classAPI.updateClass(editingId, payload);
-        console.debug('Update class response', res);
-        if (res.success) {
-          await fetchClasses();
-          setForm(emptyForm);
-          setEditingId(null);
-        } else {
-          setError(res.errors || res.message || 'Failed to update class');
-        }
-      } else {
-        const res = await classAPI.createClass(payload);
-        console.debug('Create class response', res);
-        if (res.success) {
-          await fetchClasses();
-          setForm(emptyForm);
-        } else {
-          setError(res.errors || res.message || 'Failed to create class');
-        }
-      }
-    } catch (err) {
-      console.error('Class submit error', err);
-      // err may be an object returned from handleError
-      setError(err.errors || err.message || JSON.stringify(err) || 'Unexpected error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEdit = (cls) => {
-    setEditingId(cls._id);
-    setForm({
-      subject: cls.subject || '',
-      subjectCode: cls.subjectCode || '',
-      department: cls.department || '',
-  semester: cls.semester || '',
-  academicYear: cls.academicYear || '',
-  schedule: cls.schedule || [],
-  scheduleDay: cls.schedule?.dayOfWeek || (cls.schedule && cls.schedule[0]?.dayOfWeek) || 'Monday',
-  scheduleStartTime: cls.schedule?.startTime || (cls.schedule && cls.schedule[0]?.startTime) || '09:00',
-  scheduleEndTime: cls.schedule?.endTime || (cls.schedule && cls.schedule[0]?.endTime) || '10:00',
-  geofenceRadius: cls.geofenceRadius || 20,
-      classroom: cls.classroom || '',
-      description: cls.description || '',
-      teacherId: cls.teacherId?._id || ''
+  const getOccupyingClass = (day, time) => {
+    const slotMin = toMinutes(time);
+    return classes.find((c) => {
+      if (c.schedule?.dayOfWeek !== day) return false;
+      const startMin = toMinutes(c.schedule?.startTime);
+      const duration = getClassDuration(c);
+      const endMin = startMin + duration;
+      return slotMin >= startMin && slotMin < endMin;
     });
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this class?')) return;
-    setLoading(true);
-    try {
-      const res = await classAPI.deleteClass(id);
-      if (res.success) {
-        await fetchClasses();
-      } else {
-        setError(res.message || 'Failed to delete class');
+  const openAdd = (dayOfWeek, startTime) => {
+    if (BREAK_SLOTS.has(startTime)) return;
+    
+    if (copiedClass) {
+      const duration = getClassDuration(copiedClass);
+      const endTime = fromMinutes(toMinutes(startTime) + duration);
+      setDraft({
+        ...emptyDraft,
+        subject: copiedClass.subject || '',
+        subjectCode: copiedClass.subjectCode || '',
+        teacherId: copiedClass.teacherId?._id || copiedClass.teacherId || '',
+        department: copiedClass.department || '',
+        year: copiedClass.year || '',
+        semester: copiedClass.semester || '',
+        section: copiedClass.section || '',
+        academicYear: copiedClass.academicYear || getDefaultAcademicYear(),
+        classroom: copiedClass.classroom || '',
+        description: copiedClass.description || '',
+        dayOfWeek,
+        startTime,
+        endTime
+      });
+    } else {
+      const endTime = fromMinutes(toMinutes(startTime) + DEFAULT_DURATION_MINUTES);
+      setDraft({
+        ...emptyDraft,
+        department: filters.department || user?.department || departments[0] || '',
+        semester: filters.semester || '',
+        year: filters.year || (filters.semester ? Math.ceil(Number(filters.semester) / 2) : years[0] || ''),
+        section: filters.section || '',
+        teacherId: filters.teacherId || '',
+        academicYear: getDefaultAcademicYear(),
+        dayOfWeek,
+        startTime,
+        endTime
+      });
+    }
+  };
+
+  const openEdit = (classItem) => {
+    setDraft({
+      _id: getClassId(classItem),
+      subject: classItem.subject || '',
+      subjectCode: classItem.subjectCode || '',
+      teacherId: classItem.teacherId?._id || classItem.teacherId || '',
+      department: classItem.department || filters.department || user?.department || '',
+      year: classItem.year || (classItem.semester ? Math.ceil(Number(classItem.semester) / 2) : ''),
+      semester: classItem.semester || '',
+      section: classItem.section || '',
+      academicYear: classItem.academicYear || getDefaultAcademicYear(),
+      dayOfWeek: classItem.schedule?.dayOfWeek || 'Monday',
+      startTime: classItem.schedule?.startTime || '09:00',
+      endTime: getClassEndTime(classItem),
+      classroom: classItem.classroom || '',
+      description: classItem.description || ''
+    });
+  };
+
+  const updateDraft = (event) => {
+    const { name, value } = event.target;
+    setDraft((prev) => {
+      let updated = {
+        ...prev,
+        [name]: value,
+        ...(name === 'department' ? { year: '', semester: '', section: '', teacherId: '' } : {}),
+        ...(name === 'year' ? { semester: '', section: '' } : {}),
+        ...(name === 'semester' ? { section: '' } : {}),
+        ...(name === 'section' ? { section: value.toUpperCase() } : {})
+      };
+
+      if (name === 'startTime') {
+        const duration = toMinutes(prev.endTime) - toMinutes(prev.startTime);
+        updated.endTime = fromMinutes(toMinutes(value) + duration);
       }
+
+      return updated;
+    });
+  };
+
+  const draftConflict = useMemo(() => {
+    if (!draft) return null;
+    const draftStart = toMinutes(draft.startTime);
+    const draftEnd = toMinutes(draft.endTime);
+    if (draftEnd <= draftStart) return null;
+
+    return classes.find((item) => {
+      if (getClassId(item) === draft._id) return false;
+      if (item.schedule?.dayOfWeek !== draft.dayOfWeek) return false;
+
+      const itemStart = toMinutes(item.schedule?.startTime);
+      const itemEnd = toMinutes(getClassEndTime(item));
+
+      const overlaps = rangesOverlap(draftStart, draftEnd, itemStart, itemEnd);
+      if (!overlaps) return false;
+
+      const sameTeacher = String(item.teacherId?._id || item.teacherId) === String(draft.teacherId);
+      const sameGroup = item.department === draft.department &&
+        Number(item.semester) === Number(draft.semester) &&
+        String(item.section || '').toUpperCase() === String(draft.section || '').toUpperCase();
+      return sameTeacher || sameGroup;
+    });
+  }, [classes, draft]);
+
+  const saveDraft = async (event) => {
+    event.preventDefault();
+    if (!draft || draftConflict) return;
+
+    const payload = {
+      subject: draft.subject.trim(),
+      subjectCode: draft.subjectCode.trim().toUpperCase(),
+      teacherId: draft.teacherId,
+      department: draft.department,
+      year: draft.year ? Number(draft.year) : draft.semester ? Math.ceil(Number(draft.semester) / 2) : undefined,
+      semester: Number(draft.semester),
+      section: draft.section ? draft.section.trim().toUpperCase() : undefined,
+      academicYear: draft.academicYear || getDefaultAcademicYear(),
+      schedule: {
+        dayOfWeek: draft.dayOfWeek,
+        startTime: draft.startTime,
+        endTime: draft.endTime
+      },
+      classroom: draft.classroom || undefined,
+      description: draft.description || undefined
+    };
+
+    try {
+      setSaving(true);
+      setError('');
+      const response = draft._id
+        ? await classAPI.updateClass(draft._id, payload)
+        : await classAPI.createClass(payload);
+
+      if (!response.success) {
+        setError(response.message || 'Failed to save class');
+        return;
+      }
+
+      setDraft(null);
+      await fetchClasses();
     } catch (err) {
-      setError(err.message || 'Unexpected error');
+      setError(err.message || 'Failed to save class');
     } finally {
-      setLoading(false);
+      setSaving(false);
+    }
+  };
+
+  const handleDrop = async (dayOfWeek, startTime) => {
+    if (!draggedClassId || BREAK_SLOTS.has(startTime)) return;
+    const classItem = classes.find((item) => getClassId(item) === draggedClassId);
+    setDraggedClassId(null);
+    if (!classItem) return;
+
+    const duration = getClassDuration(classItem);
+    const endTime = fromMinutes(toMinutes(startTime) + duration);
+
+    // Find any overlapping class in the target slot
+    const targetStart = toMinutes(startTime);
+    const targetEnd = targetStart + duration;
+
+    const overlappingClasses = classes.filter((item) => {
+      if (getClassId(item) === draggedClassId) return false;
+      if (item.schedule?.dayOfWeek !== dayOfWeek) return false;
+
+      const itemStart = toMinutes(item.schedule?.startTime);
+      const itemEnd = toMinutes(getClassEndTime(item));
+
+      return rangesOverlap(targetStart, targetEnd, itemStart, itemEnd);
+    });
+
+    try {
+      setSaving(true);
+      setError('');
+
+      if (overlappingClasses.length > 0) {
+        const conflictingNames = overlappingClasses.map((c) => c.subject).join(', ');
+        const confirmReplace = window.confirm(
+          `Conflict detected with existing class(es): ${conflictingNames}. Do you want to replace them?`
+        );
+
+        if (!confirmReplace) {
+          setSaving(false);
+          return;
+        }
+
+        // Delete the conflicting classes
+        for (const confClass of overlappingClasses) {
+          const delRes = await classAPI.deleteClass(getClassId(confClass));
+          if (!delRes.success) {
+            setError(delRes.message || 'Failed to replace existing class');
+            setSaving(false);
+            return;
+          }
+        }
+      }
+
+      // Update the dragged class schedule
+      const response = await classAPI.updateClass(draggedClassId, {
+        schedule: {
+          ...(classItem.schedule || {}),
+          dayOfWeek,
+          startTime,
+          endTime
+        }
+      });
+
+      if (!response.success) {
+        setError(response.message || 'Failed to move class');
+        return;
+      }
+
+      await fetchClasses();
+    } catch (err) {
+      setError(err.message || 'Failed to move class');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteDraft = async () => {
+    if (!draft?._id || !window.confirm('Delete this class?')) return;
+    try {
+      setSaving(true);
+      setError('');
+      const response = await classAPI.deleteClass(draft._id);
+      if (!response.success) {
+        setError(response.message || 'Failed to delete class');
+        return;
+      }
+      setDraft(null);
+      await fetchClasses();
+    } catch (err) {
+      setError(err.message || 'Failed to delete class');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="p-4">
-      <h2 className="text-2xl font-semibold mb-4">Admin Classes</h2>
-
-      <div className="grid grid-cols-2 gap-6">
+    <div className="p-6 space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h3 className="text-lg font-medium mb-2">{editingId ? 'Edit Class' : 'Create Class'}</h3>
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="block text-sm">Subject</label>
-              <input name="subject" value={form.subject} onChange={handleChange} className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Subject Code</label>
-              <input name="subjectCode" value={form.subjectCode} onChange={handleChange} className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Teacher</label>
-              <select name="teacherId" value={form.teacherId} onChange={handleChange} className="input w-full">
-                <option value="">-- Select Teacher --</option>
-                {teachers.map(t => (
-                  <option key={t._id} value={t._id}>{t.firstName} {t.lastName} ({t.employeeId || t.teacherId || t._id})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm">Academic Year</label>
-              <input name="academicYear" value={form.academicYear} onChange={handleChange} className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Day of Week</label>
-              <select name="scheduleDay" value={form.scheduleDay} onChange={handleChange} className="input w-full">
-                <option key="mon" value="Monday">Monday</option>
-                <option key="tue" value="Tuesday">Tuesday</option>
-                <option key="wed" value="Wednesday">Wednesday</option>
-                <option key="thu" value="Thursday">Thursday</option>
-                <option key="fri" value="Friday">Friday</option>
-                <option key="sat" value="Saturday">Saturday</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm">Start Time</label>
-              <input name="scheduleStartTime" type="time" value={form.scheduleStartTime} onChange={handleChange} className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">End Time</label>
-              <input name="scheduleEndTime" type="time" value={form.scheduleEndTime} onChange={handleChange} className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Semester</label>
-              <input name="semester" value={form.semester} onChange={handleChange} className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Department</label>
-              <input name="department" value={form.department} onChange={handleChange} placeholder="e.g., Computer Science" className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Section (optional)</label>
-              <input name="section" value={form.section || ''} onChange={handleChange} placeholder="e.g., A" className="input w-full" />
-            </div>
-            <div>
-              <label className="block text-sm">Classroom</label>
-              <input name="classroom" value={form.classroom} onChange={handleChange} className="input w-full" />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button type="submit" className="btn btn-primary" disabled={loading}>{editingId ? 'Update' : 'Create'}</button>
-              {editingId && <button type="button" onClick={() => { setEditingId(null); setForm(emptyForm); }} className="btn">Cancel</button>}
-            </div>
-
-            {error && <div className="text-red-600">{error}</div>}
-          </form>
+          <h1 className="text-2xl font-bold text-gray-900">Weekly Schedule</h1>
+          <p className="text-sm text-gray-600">Assign classes to a teacher, department, semester, and section.</p>
         </div>
+        <button onClick={() => openAdd('Monday', '09:00')} className="btn btn-primary inline-flex items-center gap-2">
+          <Plus className="h-4 w-4" />
+          Add Class
+        </button>
+      </div>
 
-        <div>
-          <h3 className="text-lg font-medium mb-2">Classes</h3>
-          {loading && <div>Loading...</div>}
-          {!loading && classes.length === 0 && <div>No classes found.</div>}
-          {!loading && classes.length > 0 && (
-            <div className="space-y-2">
-                {classes.map((cls, idx) => (
-                <div key={cls._id || cls.classId || idx} className="p-3 border rounded flex justify-between items-center">
-                  <div>
-                    <div className="font-medium">{cls.subject} ({cls.subjectCode})</div>
-                    <div className="text-sm text-gray-600">Teacher: {cls.teacherId?.firstName} {cls.teacherId?.lastName}</div>
-                    <div className="text-sm text-gray-600">Year: {cls.academicYear} • Sem: {cls.semester} • Dept: {cls.department}</div>
+      <div className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-4 md:grid-cols-5">
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-gray-600">Department</span>
+          <select name="department" value={filters.department} onChange={handleFilterChange} className="input w-full">
+            {departments.map((department) => (
+              <option key={department} value={department}>{department}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-gray-600">Year</span>
+          <select name="year" value={filters.year} onChange={handleFilterChange} className="input w-full">
+            <option value="">All years</option>
+            {years.map((year) => (
+              <option key={year} value={year}>Year {year}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-gray-600">Semester</span>
+          <select name="semester" value={filters.semester} onChange={handleFilterChange} className="input w-full">
+            <option value="">All semesters</option>
+            {semesters.map((semester) => (
+              <option key={semester} value={semester}>Semester {semester}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-gray-600">Section</span>
+          <select name="section" value={filters.section} onChange={handleFilterChange} className="input w-full">
+            <option value="">All sections</option>
+            {sections.map((section) => (
+              <option key={section} value={section}>Section {section}</option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-gray-600">Teacher</span>
+          <select name="teacherId" value={filters.teacherId} onChange={handleFilterChange} className="input w-full">
+            <option value="">All teachers</option>
+            {filteredTeachers.map((teacher) => (
+              <option key={teacher._id} value={teacher._id}>{teacher.firstName} {teacher.lastName}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {copiedClass && (
+        <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 shadow-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Copy className="h-4 w-4 text-blue-600 animate-pulse" />
+            <span>
+              Copied template for <strong>{copiedClass.subjectCode || copiedClass.subject}</strong>. Click any <strong>Free</strong> slot to paste.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCopiedClass(null)}
+            className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+          >
+            Clear Copy
+          </button>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border bg-white">
+        <div className="min-w-[880px] grid grid-cols-[88px_repeat(6,minmax(120px,1fr))] relative bg-gray-50">
+          {/* Header Row */}
+          <div className="p-3 bg-gray-50 border-b text-sm font-semibold text-gray-700">Time</div>
+          {DAYS.map((day) => (
+            <div key={day} className="border-l border-b p-3 bg-gray-50 text-sm font-semibold text-gray-700">{day.slice(0, 3)}</div>
+          ))}
+
+          {/* Time Slots & Background Cells */}
+          {TIME_SLOTS.map((time, slotIdx) => {
+            const rowIdx = slotIdx + 2;
+            const isBreak = BREAK_SLOTS.has(time);
+
+            return (
+              <React.Fragment key={time}>
+                {/* Time Label */}
+                <div
+                  className="flex items-start justify-center p-3 text-sm font-medium text-gray-700 border-b bg-gray-50"
+                  style={{ gridColumn: 1, gridRow: rowIdx }}
+                >
+                  {time}
+                </div>
+
+                {isBreak ? (
+                  /* Break Span across all columns */
+                  <div
+                    className="flex items-center justify-center border-l border-b border-gray-200 bg-gray-100 text-xs font-medium text-gray-500"
+                    style={{ gridColumn: '2 / span 6', gridRow: rowIdx, minHeight: '88px' }}
+                  >
+                    Break
                   </div>
-                  <div className="space-x-2">
-                    <button onClick={() => handleEdit(cls)} className="btn btn-sm">Edit</button>
-                    <button onClick={() => handleDelete(cls._id)} className="btn btn-sm btn-danger">Delete</button>
+                ) : (
+                  DAYS.map((day, dayIdx) => {
+                    const colIdx = dayIdx + 2;
+                    const occupyingClass = getOccupyingClass(day, time);
+
+                    if (occupyingClass) {
+                      return (
+                        <div
+                          key={`${day}-${time}`}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => handleDrop(day, time)}
+                          className="border-l border-b border-gray-100 bg-white"
+                          style={{ gridColumn: colIdx, gridRow: rowIdx, minHeight: '88px' }}
+                        />
+                      );
+                    } else {
+                      return (
+                        <button
+                          type="button"
+                          key={`${day}-${time}`}
+                          onClick={() => openAdd(day, time)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => handleDrop(day, time)}
+                          className="border-l border-b border-gray-200 bg-white hover:bg-gray-50/50 transition flex items-center justify-center p-2 text-left"
+                          style={{ gridColumn: colIdx, gridRow: rowIdx, minHeight: '88px' }}
+                        >
+                          <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-gray-200 text-xs text-gray-400">
+                            Free
+                          </div>
+                        </button>
+                      );
+                    }
+                  })
+                )}
+              </React.Fragment>
+            );
+          })}
+
+          {/* Dynamic Class Cards */}
+          {classes.map((classItem) => {
+            const dayIdx = DAYS.indexOf(classItem.schedule?.dayOfWeek);
+            if (dayIdx === -1) return null;
+
+            const startMin = toMinutes(classItem.schedule?.startTime);
+            const duration = getClassDuration(classItem);
+            const endMin = startMin + duration;
+
+            const startRow = Math.max(0, Math.floor((startMin - SCHEDULE_START_MINUTES) / 30)) + 2;
+            const endRow = Math.min(TIME_SLOTS.length, Math.ceil((endMin - SCHEDULE_START_MINUTES) / 30)) + 2;
+            const rowSpan = Math.max(1, endRow - startRow);
+
+            const colIdx = dayIdx + 2;
+            const color = subjectColorMap.get(classItem.subjectCode || classItem.subject) || colorClasses[0];
+            const teacherName = classItem.teacherId
+              ? `${classItem.teacherId.firstName || ''} ${classItem.teacherId.lastName || ''}`.trim()
+              : classItem.teacherName;
+
+            return (
+              <div
+                key={getClassId(classItem)}
+                draggable
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  setDraggedClassId(getClassId(classItem));
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openEdit(classItem);
+                }}
+                className={`rounded-md border p-3 text-xs shadow-sm cursor-pointer transition select-none flex flex-col justify-between ${color}`}
+                style={{
+                  gridColumn: colIdx,
+                  gridRow: `${startRow} / span ${rowSpan}`,
+                  zIndex: 10,
+                  margin: '3px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                }}
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-1.5">
+                    <span className="font-bold text-sm tracking-tight leading-tight">{classItem.subjectCode || classItem.subject}</span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        title="Copy Class Template"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCopiedClass(classItem);
+                        }}
+                        className="p-0.5 rounded hover:bg-black/10 transition text-gray-600 hover:text-black"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <GripVertical className="h-3.5 w-3.5 opacity-60 cursor-grab active:cursor-grabbing" />
+                    </div>
+                  </div>
+                  <div className="mt-1.5 font-medium truncate text-gray-700">{teacherName || 'Teacher'}</div>
+                </div>
+                <div className="mt-2 flex flex-col gap-0.5 text-[10px] opacity-80 border-t border-black/5 pt-1.5">
+                  <div className="font-semibold text-gray-800">
+                    Sem {classItem.semester} | Sec {classItem.section || 'All'}
+                  </div>
+                  <div className="text-gray-600 font-medium">
+                    {classItem.schedule?.startTime} - {getClassEndTime(classItem)} ({duration}m)
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            );
+          })}
         </div>
+      </div>
+
+      {loading && (
+        <div className="text-sm text-gray-500">Loading schedule...</div>
+      )}
+
+      {draft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-3xl rounded-lg bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-primary-600" />
+                <h2 className="text-lg font-semibold">{draft._id ? 'Edit Class' : 'Add Class'}</h2>
+              </div>
+              <button type="button" onClick={() => setDraft(null)} className="rounded p-1 hover:bg-gray-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={saveDraft} className="space-y-4 p-5">
+              {draftConflict && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Conflict detected with {draftConflict.subject} at this time.
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Subject</span>
+                  <input name="subject" value={draft.subject} onChange={updateDraft} required className="input w-full" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Subject Code</span>
+                  <input name="subjectCode" value={draft.subjectCode} onChange={updateDraft} required className="input w-full uppercase" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Teacher</span>
+                  <select name="teacherId" value={draft.teacherId} onChange={updateDraft} required className="input w-full">
+                    <option value="">Select teacher</option>
+                    {draftTeachers.map((teacher) => (
+                      <option key={teacher._id} value={teacher._id}>{teacher.firstName} {teacher.lastName}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Department</span>
+                  <select name="department" value={draft.department} onChange={updateDraft} required className="input w-full">
+                    {departments.map((department) => (
+                      <option key={department} value={department}>{department}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Semester</span>
+                  <select name="semester" value={draft.semester} onChange={updateDraft} required className="input w-full">
+                    <option value="">Select semester</option>
+                    {draftSemesters.map((semester) => (
+                      <option key={semester} value={semester}>Semester {semester}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Year</span>
+                  <select name="year" value={draft.year} onChange={updateDraft} required className="input w-full">
+                    <option value="">Select year</option>
+                    {years.map((year) => (
+                      <option key={year} value={year}>Year {year}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Section</span>
+                  <select name="section" value={draft.section} onChange={updateDraft} required className="input w-full">
+                    <option value="">Select section</option>
+                    {draftSections.map((section) => (
+                      <option key={section} value={section}>{section}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Day of Week</span>
+                  <select name="dayOfWeek" value={draft.dayOfWeek} onChange={updateDraft} required className="input w-full">
+                    {DAYS.map((day) => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Start Time</span>
+                  <select name="startTime" value={draft.startTime} onChange={updateDraft} required className="input w-full">
+                    {TIME_SLOTS.map((time) => (
+                      <option key={time} value={time}>{time}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Duration</span>
+                  <select
+                    name="durationMinutes"
+                    value={toMinutes(draft.endTime) - toMinutes(draft.startTime)}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setDraft((prev) => ({
+                        ...prev,
+                        endTime: fromMinutes(toMinutes(prev.startTime) + val)
+                      }));
+                    }}
+                    required
+                    className="input w-full"
+                  >
+                    {DURATION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt} minutes</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Classroom</span>
+                  <input name="classroom" value={draft.classroom} onChange={updateDraft} className="input w-full" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-gray-600">Description</span>
+                  <input name="description" value={draft.description} onChange={updateDraft} className="input w-full" />
+                </label>
+              </div>
+
+              <div className="flex items-center justify-between border-t pt-4">
+                <div>
+                  {draft._id && (
+                    <button type="button" onClick={deleteDraft} disabled={saving} className="btn btn-outline inline-flex items-center gap-2 text-red-600">
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setDraft(null)} className="btn btn-secondary">Cancel</button>
+                  <button type="submit" disabled={saving || !!draftConflict} className="btn btn-primary inline-flex items-center gap-2">
+                    <Save className="h-4 w-4" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">
+        <div className="mb-2 flex items-center gap-2 font-medium text-gray-900">
+          <CalendarDays className="h-4 w-4" />
+          Schedule rules
+        </div>
+        Empty slots create a class. Existing blocks edit a class. Drag blocks to move them. Conflicts are blocked when a teacher or the same department-semester-section already has a class in that slot.
       </div>
     </div>
   );

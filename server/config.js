@@ -2,7 +2,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 /**
  * Application Configuration
@@ -29,6 +29,7 @@ const config = {
       maxPoolSize: 10,
       connectTimeoutMS: 30000,
       socketTimeoutMS: 30000,
+      serverSelectionTimeoutMS: 5000,
     }
   },
 

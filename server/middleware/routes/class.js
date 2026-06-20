@@ -39,6 +39,16 @@ router.get(
   classController.getTeacherClasses,
 );
 
+// @route   GET /class/manage
+// @desc    Get schedule classes for admin/teacher management
+// @access  Private (Teacher, Admin)
+router.get(
+  "/manage",
+  authenticate,
+  authorize("teacher", "admin"),
+  classController.getManageClasses,
+);
+
 // @route   GET /class/enrolled
 // @desc    Get enrolled classes for student
 // @access  Private (Student)
@@ -53,6 +63,16 @@ router.get(
 // @desc    Get active classes
 // @access  Private
 router.get("/active", authenticate, classController.getActiveClasses);
+
+// @route   GET /class/admin/routines
+// @desc    Get admin routines
+// @access  Private (Admin)
+router.get(
+  "/admin/routines",
+  authenticate,
+  authorize("admin"),
+  classController.getAdminRoutines,
+);
 
 // @route   GET /class/:id
 // @desc    Get class details

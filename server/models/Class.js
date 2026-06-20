@@ -1,5 +1,18 @@
 const mongoose = require('mongoose');
 
+const getScheduleDuration = (schedule) => {
+  if (!schedule || !schedule.startTime || !schedule.endTime) return undefined;
+
+  const [startHour, startMinute] = String(schedule.startTime).split(':').map(Number);
+  const [endHour, endMinute] = String(schedule.endTime).split(':').map(Number);
+
+  if (![startHour, startMinute, endHour, endMinute].every(Number.isFinite)) {
+    return undefined;
+  }
+
+  return (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+};
+
 /**
  * Class Schema
  * Represents a class session with teacher location and geofence
@@ -62,6 +75,22 @@ const classSchema = new mongoose.Schema({
     max: [8, 'Semester cannot exceed 8']
   },
 
+  year: {
+    type: Number,
+    min: [1, 'Year must be at least 1'],
+    max: [4, 'Year cannot exceed 4'],
+    default: function() {
+      return this.semester ? Math.ceil(this.semester / 2) : undefined;
+    }
+  },
+
+  section: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    maxlength: [10, 'Section cannot exceed 10 characters']
+  },
+
   academicYear: {
     type: String,
     required: [true, 'Academic year is required'],
@@ -83,7 +112,7 @@ const classSchema = new mongoose.Schema({
         message: 'Day of week must be a valid weekday'
       }
     },
-    
+
     startTime: {
       type: String,
       required: [true, 'Start time is required'],
@@ -94,7 +123,7 @@ const classSchema = new mongoose.Schema({
         message: 'Start time must be in HH:MM format'
       }
     },
-    
+
     endTime: {
       type: String,
       required: [true, 'End time is required'],
@@ -122,7 +151,7 @@ const classSchema = new mongoose.Schema({
       min: [-90, 'Latitude must be between -90 and 90'],
       max: [90, 'Latitude must be between -90 and 90']
     },
-    
+
     longitude: {
       type: Number,
       required: function() {
@@ -186,7 +215,7 @@ const classSchema = new mongoose.Schema({
       default: 15, // Allow attendance 15 minutes before class
       min: [0, 'Before minutes cannot be negative']
     },
-    
+
     afterMinutes: {
       type: Number,
       default: 15, // Allow attendance 15 minutes after class starts
@@ -201,12 +230,12 @@ const classSchema = new mongoose.Schema({
       ref: 'User',
       required: true
     },
-    
+
     enrolledAt: {
       type: Date,
       default: Date.now
     },
-    
+
     status: {
       type: String,
       enum: ['enrolled', 'dropped', 'suspended'],
@@ -220,14 +249,14 @@ const classSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
-    
+
     averageAttendance: {
       type: Number,
       default: 0,
       min: 0,
       max: 100
     },
-    
+
     totalSessions: {
       type: Number,
       default: 0
@@ -271,7 +300,7 @@ const classSchema = new mongoose.Schema({
 
 // Indexes for better performance (excluding unique fields which auto-create indexes)
 classSchema.index({ teacherId: 1, status: 1 });
-classSchema.index({ department: 1, semester: 1 });
+classSchema.index({ department: 1, year: 1, semester: 1, section: 1 });
 classSchema.index({ 'schedule.dayOfWeek': 1, 'schedule.startTime': 1 });
 classSchema.index({ academicYear: 1, isActive: 1 });
 classSchema.index({ status: 1, sessionStartTime: 1 });
@@ -279,7 +308,7 @@ classSchema.index({ status: 1, sessionStartTime: 1 });
 // Virtual for current session duration
 classSchema.virtual('currentSessionDuration').get(function() {
   if (!this.sessionStartTime) return 0;
-  
+
   const endTime = this.sessionEndTime || new Date();
   return Math.floor((endTime - this.sessionStartTime) / (1000 * 60)); // Duration in minutes
 });
@@ -299,17 +328,39 @@ classSchema.virtual('attendanceWindowTimes').get(function() {
   };
 });
 
-// Pre-save middleware to calculate duration
-classSchema.pre('save', function(next) {
-  if (this.schedule && this.schedule.startTime && this.schedule.endTime) {
-    const [startHour, startMinute] = this.schedule.startTime.split(':').map(Number);
-    const [endHour, endMinute] = this.schedule.endTime.split(':').map(Number);
-    
-    const startMinutes = startHour * 60 + startMinute;
-    const endMinutes = endHour * 60 + endMinute;
-    
-    this.schedule.duration = endMinutes - startMinutes;
+// Pre-validation middleware to calculate derived fields before required validators run.
+classSchema.pre('validate', function(next) {
+  const duration = getScheduleDuration(this.schedule);
+  if (typeof duration === 'number') {
+    this.schedule.duration = duration;
   }
+
+  if (!this.year && this.semester) {
+    this.year = Math.ceil(this.semester / 2);
+  }
+
+  if (this.section) {
+    this.section = String(this.section).trim().toUpperCase();
+  }
+
+  next();
+});
+
+classSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  const schedule = update?.schedule || update?.$set?.schedule;
+  const duration = getScheduleDuration(schedule);
+
+  if (typeof duration === 'number') {
+    if (update.schedule) {
+      update.schedule.duration = duration;
+    } else {
+      update.$set = update.$set || {};
+      update.$set['schedule.duration'] = duration;
+    }
+    this.setUpdate(update);
+  }
+
   next();
 });
 
@@ -333,7 +384,7 @@ classSchema.methods.startSession = function(teacherLocation) {
     address: teacherLocation.address || '',
     capturedAt: new Date()
   };
-  
+
   return this.save();
 };
 
@@ -342,7 +393,7 @@ classSchema.methods.endSession = function() {
   this.status = 'completed';
   this.sessionEndTime = new Date();
   this.statistics.totalSessions += 1;
-  
+
   return this.save();
 };
 
@@ -404,7 +455,7 @@ classSchema.methods.dropStudent = function(studentId) {
 // Static method to generate class ID
 classSchema.statics.generateClassId = async function(subjectCode, academicYear, semester) {
   const prefix = `${subjectCode}-${academicYear.split('-')[0]}-S${semester}`;
-  
+
   // Find the highest class ID with this prefix
   const lastClass = await this.findOne(
     { classId: new RegExp(`^${prefix}`) },

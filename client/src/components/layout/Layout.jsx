@@ -12,7 +12,6 @@ import {
   Users, 
   Calendar, 
   BarChart3, 
-  Settings, 
   LogOut, 
   User,
   BookOpen,
@@ -58,9 +57,8 @@ const Layout = ({ children, userRole }) => {
           ...baseItems,
           { name: 'Users', href: '/admin/users', icon: Users },
           { name: 'Classes', href: '/admin/classes', icon: BookOpen },
-          { name: 'Attendance', href: '/admin/attendance', icon: UserCheck },
-          { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 },
-          { name: 'Settings', href: '/admin/settings', icon: Settings }
+          { name: 'Routines', href: '/admin/routines', icon: UserCheck },
+          { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 }
         ];
       
       case 'superadmin':
