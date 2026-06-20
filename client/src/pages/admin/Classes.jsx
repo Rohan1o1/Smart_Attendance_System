@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, BookOpen, CalendarDays, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
+import { AlertCircle, BookOpen, CalendarDays, Copy, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
 import { adminAPI, classAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -92,6 +92,7 @@ const ClassesPage = () => {
   });
   const [draft, setDraft] = useState(null);
   const [draggedClassId, setDraggedClassId] = useState(null);
+  const [copiedClass, setCopiedClass] = useState(null);
 
   const teachers = useMemo(
     () => users.filter((item) => item.role === 'teacher' && item.verified !== false),
@@ -320,19 +321,41 @@ const ClassesPage = () => {
 
   const openAdd = (dayOfWeek, startTime) => {
     if (BREAK_SLOTS.has(startTime)) return;
-    const endTime = fromMinutes(toMinutes(startTime) + DEFAULT_DURATION_MINUTES);
-    setDraft({
-      ...emptyDraft,
-      department: filters.department || user?.department || departments[0] || '',
-      semester: filters.semester || '',
-      year: filters.year || (filters.semester ? Math.ceil(Number(filters.semester) / 2) : years[0] || ''),
-      section: filters.section || '',
-      teacherId: filters.teacherId || '',
-      academicYear: getDefaultAcademicYear(),
-      dayOfWeek,
-      startTime,
-      endTime
-    });
+    
+    if (copiedClass) {
+      const duration = getClassDuration(copiedClass);
+      const endTime = fromMinutes(toMinutes(startTime) + duration);
+      setDraft({
+        ...emptyDraft,
+        subject: copiedClass.subject || '',
+        subjectCode: copiedClass.subjectCode || '',
+        teacherId: copiedClass.teacherId?._id || copiedClass.teacherId || '',
+        department: copiedClass.department || '',
+        year: copiedClass.year || '',
+        semester: copiedClass.semester || '',
+        section: copiedClass.section || '',
+        academicYear: copiedClass.academicYear || getDefaultAcademicYear(),
+        classroom: copiedClass.classroom || '',
+        description: copiedClass.description || '',
+        dayOfWeek,
+        startTime,
+        endTime
+      });
+    } else {
+      const endTime = fromMinutes(toMinutes(startTime) + DEFAULT_DURATION_MINUTES);
+      setDraft({
+        ...emptyDraft,
+        department: filters.department || user?.department || departments[0] || '',
+        semester: filters.semester || '',
+        year: filters.year || (filters.semester ? Math.ceil(Number(filters.semester) / 2) : years[0] || ''),
+        section: filters.section || '',
+        teacherId: filters.teacherId || '',
+        academicYear: getDefaultAcademicYear(),
+        dayOfWeek,
+        startTime,
+        endTime
+      });
+    }
   };
 
   const openEdit = (classItem) => {
@@ -593,6 +616,24 @@ const ClassesPage = () => {
         </label>
       </div>
 
+      {copiedClass && (
+        <div className="flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 shadow-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Copy className="h-4 w-4 text-blue-600 animate-pulse" />
+            <span>
+              Copied template for <strong>{copiedClass.subjectCode || copiedClass.subject}</strong>. Click any <strong>Free</strong> slot to paste.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCopiedClass(null)}
+            className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+          >
+            Clear Copy
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           <AlertCircle className="h-4 w-4" />
@@ -712,7 +753,20 @@ const ClassesPage = () => {
                 <div>
                   <div className="flex items-start justify-between gap-1.5">
                     <span className="font-bold text-sm tracking-tight leading-tight">{classItem.subjectCode || classItem.subject}</span>
-                    <GripVertical className="h-3.5 w-3.5 opacity-60 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        title="Copy Class Template"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setCopiedClass(classItem);
+                        }}
+                        className="p-0.5 rounded hover:bg-black/10 transition text-gray-600 hover:text-black"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <GripVertical className="h-3.5 w-3.5 opacity-60 cursor-grab active:cursor-grabbing" />
+                    </div>
                   </div>
                   <div className="mt-1.5 font-medium truncate text-gray-700">{teacherName || 'Teacher'}</div>
                 </div>
