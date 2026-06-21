@@ -28,7 +28,7 @@ const apiClient = axios.create({
  */
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -68,10 +68,18 @@ apiClient.interceptors.response.use(
           refreshToken
         });
 
-        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+        const refreshedData = response.data.data || {};
+        const accessToken = refreshedData.accessToken || refreshedData.token;
+        const newRefreshToken = refreshedData.refreshToken;
+
+        if (!accessToken) {
+          throw new Error('Refresh response did not include an access token');
+        }
         
         localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', newRefreshToken);
+        if (newRefreshToken) {
+          localStorage.setItem('refreshToken', newRefreshToken);
+        }
 
         // Retry original request with new token
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;

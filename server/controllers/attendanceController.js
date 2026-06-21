@@ -574,20 +574,22 @@ const getClassAttendance = async (req, res) => {
     // Calculate attendance statistics
     const stats = await Attendance.getStatistics({ classId });
 
-    // Find absent students (if date is specified)
+    // Find absent students (if date is specified and no persisted absent record exists)
     let absentStudents = [];
     if (date) {
-      const presentStudentIds = attendanceRecords
-        .filter(record => ['present', 'late'].includes(record.status))
-        .map(record => record.studentId._id.toString());
+      const recordedStudentIds = attendanceRecords
+        .filter(record => ['present', 'late', 'absent', 'excused'].includes(record.status))
+        .map(record => String(record.studentId?._id || record.studentId));
 
       absentStudents = enrolledStudents
-        .filter(enrollment => !presentStudentIds.includes(enrollment.studentId.toString()))
+        .filter(enrollment => !recordedStudentIds.includes(String(enrollment.studentId?._id || enrollment.studentId)))
         .map(enrollment => enrollment.studentId);
 
       // Populate absent student details
       await User.populate(absentStudents, { path: '', select: 'firstName lastName studentId email' });
     }
+
+    const storedAbsentCount = attendanceRecords.filter(r => r.status === 'absent').length;
 
     res.json({
       success: true,
@@ -605,7 +607,7 @@ const getClassAttendance = async (req, res) => {
           totalEnrolled: enrolledStudents.length,
           totalPresent: attendanceRecords.filter(r => r.status === 'present').length,
           totalLate: attendanceRecords.filter(r => r.status === 'late').length,
-          totalAbsent: absentStudents.length,
+          totalAbsent: storedAbsentCount + absentStudents.length,
           totalFlagged: attendanceRecords.filter(r => r.status === 'flagged').length
         },
         pagination: {

@@ -268,7 +268,12 @@ const TeacherAttendance = () => {
           : s
       ));
       setActiveSession(null);
-      toast.success(`Session ended for ${session.className}`);
+      const markedAbsent = response?.data?.absenceSummary?.markedAbsent || 0;
+      toast.success(
+        markedAbsent > 0
+          ? `Session ended for ${session.className}. ${markedAbsent} student${markedAbsent === 1 ? '' : 's'} marked absent.`
+          : `Session ended for ${session.className}`
+      );
       fetchSessions();
     } catch (error) {
       console.error('Failed to end session:', error);

@@ -68,8 +68,12 @@ const Profile = () => {
     };
 
     loadProfile();
-    loadFaceStatus();
-  }, []);
+    if (user?.role === 'student') {
+      loadFaceStatus();
+    } else {
+      setFaceStatusLoading(false);
+    }
+  }, [user?.role]);
 
   // Function to load enhanced capture dynamically
   const loadEnhancedCapture = async () => {
@@ -657,8 +661,8 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Face Recognition Section - Only for non-superadmin users */}
-      {user?.role !== 'superadmin' && (
+      {/* Face Recognition Section - Only for students */}
+      {user?.role === 'student' && (
       <>
       <div className="card">
         <div className="card-header">
@@ -730,40 +734,22 @@ const Profile = () => {
                   Loading...
                 </div>
               ) : !faceDataRegistered ? (
-                <>
-                  <button
-                    onClick={() => { setUseBasicCapture(true); setShowWebcamCapture(true); }}
-                    disabled={loading}
-                    className="btn btn-primary flex items-center gap-2"
-                  >
-                    <Camera className="w-4 h-4" />
-                    {loading ? 'Processing...' : 'Register Face Data'}
-                  </button>
-                  <button
-                    onClick={async () => { 
-                      await loadEnhancedCapture(); 
-                      if (EnhancedWebcamCapture) {
-                        setUseBasicCapture(false); 
-                        setShowWebcamCapture(true);
-                      }
-                    }}
-                    disabled={loading || enhancedCaptureLoading}
-                    className="btn btn-secondary flex items-center gap-2"
-                  >
-                    <Camera className="w-4 h-4" />
-                    {enhancedCaptureLoading ? 'Loading...' : 'Smart Face Capture'}
-                  </button>
-                </>
+                <button
+                  onClick={async () => { 
+                    await loadEnhancedCapture(); 
+                    if (EnhancedWebcamCapture) {
+                      setUseBasicCapture(false); 
+                      setShowWebcamCapture(true);
+                    }
+                  }}
+                  disabled={loading || enhancedCaptureLoading}
+                  className="btn btn-secondary flex items-center gap-2"
+                >
+                  <Camera className="w-4 h-4" />
+                  {enhancedCaptureLoading ? 'Loading...' : 'Smart Face Capture'}
+                </button>
               ) : (
                 <>
-                  <button
-                    onClick={() => { setUseBasicCapture(true); setShowWebcamCapture(true); }}
-                    disabled={loading}
-                    className="btn btn-secondary flex items-center gap-2"
-                  >
-                    <Upload className="w-4 h-4" />
-                    {loading ? 'Processing...' : 'Update Face Data'}
-                  </button>
                   <button
                     onClick={async () => { 
                       await loadEnhancedCapture(); 

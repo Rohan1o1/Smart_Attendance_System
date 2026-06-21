@@ -49,8 +49,37 @@ const TeacherStudents = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      const allStudents = [];
       const studentMap = new Map(); // Use map to avoid duplicates (same student in multiple classes)
+
+      const ensureStudent = (studentData = {}) => {
+        const id = studentData._id || studentData.id;
+        if (!id) return null;
+
+        const key = String(id);
+        if (!studentMap.has(key)) {
+          const nameParts = String(studentData.studentName || '').trim().split(/\s+/);
+          studentMap.set(key, {
+            _id: id,
+            firstName: studentData.firstName || nameParts[0] || '',
+            lastName: studentData.lastName || nameParts.slice(1).join(' ') || '',
+            email: studentData.email || '',
+            studentId: studentData.studentId || studentData.studentRollNumber || '',
+            phone: studentData.phoneNumber || studentData.phone || '',
+            department: studentData.department || '',
+            enrolledClasses: [],
+            attendanceStats: studentData.attendanceStats || {
+              totalSessions: 0,
+              attendedSessions: 0,
+              attendanceRate: 0,
+              lastAttendance: null
+            },
+            status: 'active',
+            attendanceRecords: []
+          });
+        }
+
+        return studentMap.get(key);
+      };
 
       // Get teacher's classes first
       const classesResponse = await classAPI.getMyClasses();
@@ -68,29 +97,9 @@ const TeacherStudents = () => {
               // Extract student data and add to map (avoiding duplicates)
               for (const assignment of assignedStudents) {
                 const studentData = assignment.studentId || assignment;
-                if (studentData && studentData._id) {
-                  if (!studentMap.has(studentData._id)) {
-                    studentMap.set(studentData._id, {
-                      _id: studentData._id,
-                      firstName: studentData.firstName || '',
-                      lastName: studentData.lastName || '',
-                      email: studentData.email || '',
-                      studentId: studentData.studentId || '',
-                      phone: studentData.phoneNumber || studentData.phone || '',
-                      department: studentData.department || '',
-                      enrolledClasses: [],
-                      attendanceStats: studentData.attendanceStats || {
-                        totalSessions: 0,
-                        attendedSessions: 0,
-                        attendanceRate: 0,
-                        lastAttendance: null
-                      },
-                      status: 'active',
-                      attendanceRecords: []
-                    });
-                  }
+                if (studentData && (studentData._id || studentData.id)) {
                   // Add this class to the student's assigned classes
-                  const student = studentMap.get(studentData._id);
+                  const student = ensureStudent(studentData);
                   if (!student.enrolledClasses.includes(cls._id || cls.id)) {
                     student.enrolledClasses.push(cls._id || cls.id);
                   }
@@ -109,9 +118,20 @@ const TeacherStudents = () => {
               : [];
 
             records.forEach(record => {
-              const studentId = String(record.studentId?._id || record.studentId?.id || record.studentId);
-              const student = studentMap.get(studentId);
+              const recordStudent = record.studentId && typeof record.studentId === 'object'
+                ? record.studentId
+                : {
+                    _id: record.studentId,
+                    studentName: record.studentName,
+                    studentRollNumber: record.studentRollNumber,
+                    department: record.department
+                  };
+              const student = ensureStudent(recordStudent);
               if (!student) return;
+
+              if (!student.enrolledClasses.some(id => String(id) === String(classId))) {
+                student.enrolledClasses.push(classId);
+              }
 
               student.attendanceRecords.push({
                 ...record,

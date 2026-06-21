@@ -777,6 +777,7 @@ const refreshToken = async (req, res) => {
       success: true,
       message: "Token refreshed successfully",
       data: {
+        accessToken: newToken,
         token: newToken,
         refreshToken: newRefreshToken,
       },

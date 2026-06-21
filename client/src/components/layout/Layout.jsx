@@ -57,7 +57,6 @@ const Layout = ({ children, userRole }) => {
           ...baseItems,
           { name: 'Users', href: '/admin/users', icon: Users },
           { name: 'Classes', href: '/admin/classes', icon: BookOpen },
-          { name: 'Routines', href: '/admin/routines', icon: UserCheck },
           { name: 'Analytics', href: '/admin/analytics', icon: BarChart3 }
         ];
       

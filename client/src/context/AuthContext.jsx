@@ -125,7 +125,7 @@ export const AuthProvider = ({ children }) => {
    */
   const checkAuthStatus = async () => {
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem('accessToken') || localStorage.getItem('token');
       const userData = localStorage.getItem('user');
 
       if (token && userData) {
@@ -155,7 +155,8 @@ export const AuthProvider = ({ children }) => {
       console.log('🔐 AuthContext: API response:', response);
 
       if (response.success) {
-        const { user, accessToken, refreshToken } = response.data;
+        const { user, refreshToken } = response.data;
+        const accessToken = response.data.accessToken || response.data.token;
         console.log('🔐 AuthContext: Extracting data - user:', user, 'token:', !!accessToken);
 
         // Store tokens and user data
@@ -194,7 +195,8 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.register(userData);
 
       if (response.success) {
-        const { user, accessToken, refreshToken } = response.data;
+        const { user, refreshToken } = response.data;
+        const accessToken = response.data.accessToken || response.data.token;
 
         // Store tokens and user data
         localStorage.setItem('accessToken', accessToken);

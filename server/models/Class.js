@@ -389,9 +389,9 @@ classSchema.methods.startSession = function(teacherLocation) {
 };
 
 // Instance method to end class session
-classSchema.methods.endSession = function() {
+classSchema.methods.endSession = function(sessionEndTime = new Date()) {
   this.status = 'completed';
-  this.sessionEndTime = new Date();
+  this.sessionEndTime = sessionEndTime;
   this.statistics.totalSessions += 1;
 
   return this.save();

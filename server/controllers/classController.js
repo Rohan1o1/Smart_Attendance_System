@@ -1,5 +1,6 @@
 const Class = require('../models/Class');
 const User = require('../models/User');
+const Attendance = require('../models/Attendance');
 const { locationService } = require('../services');
 const config = require('../config');
 const mongoose = require('mongoose');
@@ -7,6 +8,91 @@ const mongoose = require('mongoose');
 const escapeRegExp = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const getTeacherDisplayName = (teacher) => `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim();
+
+const getEligibleStudentsForClass = async (classObj) => {
+  const explicitStudentIds = (classObj.enrolledStudents || [])
+    .filter((enrollment) => enrollment.status === 'enrolled' && enrollment.studentId)
+    .map((enrollment) => enrollment.studentId);
+
+  const assignmentQuery = {
+    role: 'student',
+    isActive: true,
+    verified: true,
+    department: classObj.department,
+    semester: classObj.semester
+  };
+
+  if (classObj.section && classObj.section !== 'All sections' && classObj.section !== '') {
+    assignmentQuery.section = { $regex: new RegExp(`^${escapeRegExp(classObj.section)}$`, 'i') };
+  }
+
+  const studentQuery = explicitStudentIds.length > 0
+    ? {
+        role: 'student',
+        isActive: true,
+        verified: true,
+        $or: [
+          { _id: { $in: explicitStudentIds } },
+          assignmentQuery
+        ]
+      }
+    : assignmentQuery;
+
+  return User.find(studentQuery).select('firstName lastName studentId rollNumber');
+};
+
+const markMissingStudentsAbsent = async (classObj, sessionEndTime) => {
+  const sessionStartTime = classObj.sessionStartTime;
+  if (!sessionStartTime) {
+    return { totalEligible: 0, alreadyMarked: 0, markedAbsent: 0 };
+  }
+
+  const eligibleStudents = await getEligibleStudentsForClass(classObj);
+  const existingRecords = await Attendance.find({
+    classId: classObj._id,
+    isActive: true,
+    timestamp: {
+      $gte: sessionStartTime,
+      $lte: sessionEndTime
+    }
+  }).select('studentId');
+
+  const markedStudentIds = new Set(existingRecords.map((record) => record.studentId.toString()));
+  const absentRecords = eligibleStudents
+    .filter((student) => !markedStudentIds.has(student._id.toString()))
+    .map((student) => ({
+      studentId: student._id,
+      studentName: getTeacherDisplayName(student),
+      studentRollNumber: student.studentId || student.rollNumber || student._id.toString(),
+      classId: classObj._id,
+      className: classObj.subject,
+      subjectCode: classObj.subjectCode,
+      teacherId: classObj.teacherId,
+      status: 'absent',
+      timestamp: sessionEndTime,
+      classStartTime: sessionStartTime,
+      verificationResults: {
+        locationVerified: false,
+        faceVerified: false,
+        timeVerified: false,
+        overallStatus: 'failed'
+      },
+      academicYear: classObj.academicYear,
+      semester: classObj.semester,
+      department: classObj.department,
+      notes: 'Automatically marked absent when the teacher closed the attendance session'
+    }));
+
+  if (absentRecords.length > 0) {
+    await Attendance.insertMany(absentRecords, { ordered: false });
+  }
+
+  return {
+    totalEligible: eligibleStudents.length,
+    alreadyMarked: markedStudentIds.size,
+    markedAbsent: absentRecords.length
+  };
+};
 
 /**
  * Class Controller
@@ -409,15 +495,19 @@ const endClassSession = async (req, res) => {
       });
     }
 
+    const sessionEndTime = new Date();
+    const absenceSummary = await markMissingStudentsAbsent(classObj, sessionEndTime);
+
     // End session
-    await classObj.endSession();
+    await classObj.endSession(sessionEndTime);
 
     res.json({
       success: true,
       message: 'Class session ended successfully',
       data: {
         class: classObj,
-        sessionDuration: classObj.currentSessionDuration
+        sessionDuration: classObj.currentSessionDuration,
+        absenceSummary
       }
     });
 
