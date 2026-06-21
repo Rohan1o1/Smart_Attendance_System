@@ -294,7 +294,6 @@ const API_ENDPOINTS = {
     CREATE: '/classes',
     UPDATE: '/classes/:id',
     DELETE: '/classes/:id',
-    ENROLL: '/classes/:id/enroll',
     START_SESSION: '/classes/:id/start-session',
     END_SESSION: '/classes/:id/end-session'
   },

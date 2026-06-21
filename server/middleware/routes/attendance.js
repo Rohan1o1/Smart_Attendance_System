@@ -7,6 +7,7 @@ const {
   attendanceSubmissionSchema,
   idParameterSchema,
   paginationSchema,
+  classAttendanceQuerySchema,
   dateRangeSchema,
   attendanceRateLimiter,
 } = require("../../middleware");
@@ -29,6 +30,17 @@ router.post(
   attendanceController.submitAttendance,
 );
 
+// @route   GET /attendance
+// @desc    Get authenticated student's attendance history
+// @access  Private
+router.get(
+  "/",
+  authenticate,
+  validate(paginationSchema, "query"),
+  validate(dateRangeSchema, "query"),
+  attendanceController.getStudentAttendance,
+);
+
 // @route   GET /attendance/student/:studentId
 // @desc    Get student's attendance history
 // @access  Private (Student - own records, Teacher - own classes, Admin - all)
@@ -49,7 +61,7 @@ router.get(
   authenticate,
   authorize("teacher", "admin"),
   validate(idParameterSchema, "params"),
-  validate(paginationSchema, "query"),
+  validate(classAttendanceQuerySchema, "query"),
   attendanceController.getClassAttendance,
 );
 

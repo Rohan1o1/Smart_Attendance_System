@@ -30,68 +30,40 @@ const MarkAttendance = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [availableClasses, setAvailableClasses] = useState([]);
+  const [markedClassIds, setMarkedClassIds] = useState(new Set());
 
-  // Load enrolled classes when component mounts
+  // Load assigned classes when component mounts
   useEffect(() => {
-    const loadEnrolledClasses = async () => {
+    const loadAssignedClasses = async () => {
       try {
         setLoading(true);
-        const response = await classAPI.getEnrolledClasses();
+        const [response, attendanceResponse] = await Promise.all([
+          classAPI.getAssignedClasses(),
+          attendanceAPI.getAttendance({ limit: 100 })
+        ]);
+        const today = new Date().toISOString().split('T')[0];
+        setMarkedClassIds(new Set(
+          (attendanceResponse.data || [])
+            .filter(record => new Date(record.timestamp).toISOString().split('T')[0] === today)
+            .map(record => String(record.classId?._id || record.classId?.id || record.classId))
+        ));
         
         if (response.success && response.data && response.data.classes) {
           setAvailableClasses(response.data.classes);
         } else {
           console.error('Failed to load classes:', response);
-          // Fallback to sample data if API fails
-          setAvailableClasses([
-            {
-              id: '675485c0e1e8c43f9c123456',
-              subject: 'Computer Science 101',
-              subjectCode: 'CS101',
-              teacherName: 'Dr. Smith',
-              schedule: {
-                dayOfWeek: 'Monday',
-                startTime: '09:00',
-                endTime: '10:30'
-              },
-              teacherLocation: {
-                address: 'Lab A, Engineering Building, Habra',
-                latitude: 22.823101464024948,
-                longitude: 88.63942781760827
-              },
-              status: 'scheduled'
-            }
-          ]);
+          setAvailableClasses([]);
         }
       } catch (error) {
         console.error('Error loading classes:', error);
         toast.error('Failed to load classes');
-        // Fallback to sample data
-        setAvailableClasses([
-          {
-            id: '675485c0e1e8c43f9c123456',
-            subject: 'Computer Science 101',
-            subjectCode: 'CS101',
-            teacherName: 'Dr. Smith',
-            schedule: {
-              dayOfWeek: 'Monday',
-              startTime: '09:00',
-              endTime: '10:30'
-            },
-            teacherLocation: {
-              address: 'Lab A, Engineering Building, Habra',
-              latitude: 22.823101464024948,
-              longitude: 88.63942781760827
-            },
-            status: 'scheduled'
-          }
-        ]);
+        setAvailableClasses([]);
       } finally {
         setLoading(false);
       }
     };
 
-    loadEnrolledClasses();
+    loadAssignedClasses();
   }, []);
 
   const getCurrentLocation = () => {
@@ -215,6 +187,8 @@ const MarkAttendance = () => {
       console.log('Attendance API response:', response); // Debug log
 
       if (response.success) {
+        const classIdString = String(classId);
+        setMarkedClassIds(prev => new Set([...prev, classIdString]));
         setCurrentStep('success');
         toast.success('Attendance marked successfully!');
         
@@ -352,7 +326,7 @@ const MarkAttendance = () => {
             </div>
 
             <div className="space-y-4">
-              {(availableClasses || []).filter(cls => cls.status === 'active' || cls.status === 'scheduled').length === 0 ? (
+              {(availableClasses || []).filter(cls => cls.status === 'active').length === 0 ? (
                 <div className="text-center py-8">
                   <AlertTriangle className="w-12 h-12 text-warning-500 mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-secondary-900 mb-2">
@@ -364,8 +338,24 @@ const MarkAttendance = () => {
                 </div>
               ) : (
                 (availableClasses || [])
-                  .filter(cls => cls.status === 'active' || cls.status === 'scheduled')
+                  .filter(cls => cls.status === 'active')
                   .map((classItem) => (
+                    markedClassIds.has(String(classItem.id || classItem._id)) ? (
+                      <div
+                        key={classItem.id || classItem._id}
+                        className="w-full text-left p-4 border border-success-200 rounded-lg bg-success-50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-secondary-900">{classItem.subject}</h3>
+                            <p className="text-secondary-600 text-sm">
+                              {classItem.subjectCode} • {classItem.teacherName}
+                            </p>
+                          </div>
+                          <div className="badge badge-success">Attendance Marked</div>
+                        </div>
+                      </div>
+                    ) : (
                     <button
                       key={classItem.id || classItem._id}
                       onClick={() => {
@@ -389,6 +379,7 @@ const MarkAttendance = () => {
                         <div className="badge badge-success">Active</div>
                       </div>
                     </button>
+                    )
                   ))
               )}
             </div>

@@ -31,9 +31,9 @@ const StudentAttendance = () => {
       setLoading(true);
       setError(null);
 
-      // Load enrolled classes and active sessions
+      // Load assigned classes and active sessions
       const [classesResponse, attendanceResponse] = await Promise.all([
-        classAPI.getEnrolledClasses(),
+        classAPI.getAssignedClasses(),
         attendanceAPI.getAttendance({ 
           studentId: user._id,
           limit: 5,
@@ -41,17 +41,22 @@ const StudentAttendance = () => {
         })
       ]);
 
-      setClasses(classesResponse.data || []);
+      const assignedClasses = classesResponse.data?.classes || classesResponse.data || [];
+      setClasses(assignedClasses);
       setRecentAttendance(attendanceResponse.data || []);
 
       // Filter active sessions
-      const activeSessionsList = (classesResponse.data || [])
-        .filter(cls => cls.currentSession && cls.currentSession.isActive)
+      const activeSessionsList = assignedClasses
+        .filter(cls => cls.status === 'active')
         .map(cls => ({
-          ...cls.currentSession,
-          className: cls.name,
-          classId: cls._id,
-          instructor: cls.instructor
+          _id: cls._id || cls.id,
+          classId: cls._id || cls.id,
+          className: cls.subject || cls.name,
+          instructor: cls.teacherId,
+          startTime: cls.sessionStartTime,
+          endTime: cls.sessionEndTime,
+          location: cls.teacherLocation,
+          ...cls
         }));
 
       setActiveSessions(activeSessionsList);
@@ -239,17 +244,17 @@ const StudentAttendance = () => {
         )}
       </div>
 
-      {/* Enrolled Classes */}
+      {/* Assigned Classes */}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-secondary-900">
-          Enrolled Classes
+          Assigned Classes
         </h2>
 
         {classes.length === 0 ? (
           <div className="card">
             <div className="card-body text-center py-8">
               <Calendar className="w-10 h-10 text-secondary-400 mx-auto mb-3" />
-              <p className="text-secondary-600">No enrolled classes found.</p>
+              <p className="text-secondary-600">No classes match your department and semester yet.</p>
             </div>
           </div>
         ) : (
@@ -258,20 +263,20 @@ const StudentAttendance = () => {
               <div key={cls._id} className="card">
                 <div className="card-body">
                   <h3 className="font-semibold text-secondary-900 mb-2">
-                    {cls.name}
+                    {cls.subject || cls.name}
                   </h3>
                   <p className="text-sm text-secondary-600 mb-3">
-                    {cls.description}
+                    {cls.description || cls.subjectCode}
                   </p>
                   
                   <div className="space-y-1 text-sm text-secondary-600">
                     <div className="flex items-center gap-2">
                       <Users className="w-4 h-4" />
-                      <span>{cls.instructor?.firstName} {cls.instructor?.lastName}</span>
+                      <span>{cls.teacherId?.firstName} {cls.teacherId?.lastName}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Clock className="w-4 h-4" />
-                      <span>{cls.schedule || 'Schedule TBA'}</span>
+                      <span>{cls.schedule ? `${cls.schedule.dayOfWeek}s ${cls.schedule.startTime} - ${cls.schedule.endTime}` : 'Schedule TBA'}</span>
                     </div>
                   </div>
 

@@ -352,6 +352,12 @@ const paginationSchema = Joi.object({
     .default('desc')
 });
 
+const classAttendanceQuerySchema = paginationSchema.keys({
+  date: Joi.date()
+    .iso()
+    .optional()
+});
+
 const dateRangeSchema = Joi.object({
   startDate: Joi.date()
     .iso()
@@ -373,23 +379,11 @@ const idPattern = Joi.string()
 
 const idParameterSchema = Joi.object({
   id: idPattern.optional(),
-  studentId: idPattern.optional()
-}).or('id', 'studentId').messages({
+  studentId: idPattern.optional(),
+  classId: idPattern.optional(),
+  attendanceId: idPattern.optional()
+}).or('id', 'studentId', 'classId', 'attendanceId').messages({
   'object.missing': 'id is required'
-});
-
-// Student enrollment schema
-const studentEnrollmentSchema = Joi.object({
-  studentIds: Joi.array()
-    .items(
-      Joi.string().pattern(/^[0-9a-fA-F]{24}$/)
-    )
-    .min(1)
-    .required()
-    .messages({
-      'array.min': 'At least one student ID is required',
-      'string.pattern.base': 'Invalid student ID format'
-    })
 });
 
 // Profile update schema
@@ -458,9 +452,9 @@ module.exports = {
   startSessionSchema,
   attendanceSubmissionSchema,
   paginationSchema,
+  classAttendanceQuerySchema,
   dateRangeSchema,
   idParameterSchema,
-  studentEnrollmentSchema,
   profileUpdateSchema,
   passwordChangeSchema
 };

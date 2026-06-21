@@ -750,18 +750,6 @@ export const classAPI = {
   },
 
   /**
-   * Enroll in class
-   */
-  enrollClass: async (classId, studentIds = []) => {
-    try {
-      const response = await apiClient.post(`/class/${classId}/enroll`, { studentIds });
-      return handleResponse(response);
-    } catch (error) {
-      throw handleError(error);
-    }
-  },
-
-  /**
    * Start class session
    */
   startSession: async (classId, sessionData) => {
@@ -786,16 +774,18 @@ export const classAPI = {
   },
 
   /**
-   * Get enrolled classes for student
+   * Get classes assigned to the current student by department and semester
    */
-  getEnrolledClasses: async () => {
+  getAssignedClasses: async () => {
     try {
       const response = await apiClient.get('/class/enrolled');
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);
     }
-  }
+  },
+
+  getEnrolledClasses: async () => classAPI.getAssignedClasses()
 };
 
 /**
@@ -832,7 +822,12 @@ export const attendanceAPI = {
   getAttendance: async (params = {}) => {
     try {
       const response = await apiClient.get('/attendance', { params });
-      return handleResponse(response);
+      const handled = handleResponse(response);
+      return {
+        ...handled,
+        data: handled.data?.attendanceRecords || handled.data || [],
+        meta: handled.data
+      };
     } catch (error) {
       throw handleError(error);
     }
@@ -844,6 +839,24 @@ export const attendanceAPI = {
   getReport: async (params = {}) => {
     try {
       const response = await apiClient.get('/attendance/report', { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  getClassAttendance: async (classId, params = {}) => {
+    try {
+      const response = await apiClient.get(`/attendance/class/${classId}`, { params });
+      return handleResponse(response);
+    } catch (error) {
+      throw handleError(error);
+    }
+  },
+
+  updateAttendance: async (attendanceId, data) => {
+    try {
+      const response = await apiClient.put(`/attendance/${attendanceId}`, data);
       return handleResponse(response);
     } catch (error) {
       throw handleError(error);

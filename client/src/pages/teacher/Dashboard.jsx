@@ -133,7 +133,7 @@ const TeacherDashboard = () => {
             Manage Students
           </h3>
           <p className="text-secondary-600 mb-4 text-sm">
-            View and manage enrolled students
+            View students assigned to your classes
           </p>
           <button 
             className="btn btn-secondary btn-sm"
@@ -177,7 +177,7 @@ const TeacherDashboard = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-secondary-900">Data Structures class scheduled</p>
-                <p className="text-xs text-secondary-500">Tomorrow at 2:00 PM • 32 students enrolled</p>
+                <p className="text-xs text-secondary-500">Tomorrow at 2:00 PM • 32 students assigned</p>
               </div>
             </div>
             <div className="text-center mt-6">

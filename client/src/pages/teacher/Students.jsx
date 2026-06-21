@@ -1,6 +1,6 @@
 /**
  * Teacher Students Management Component
- * View and manage enrolled students
+ * View students assigned to your classes
  */
 
 import { useState, useEffect } from 'react';
@@ -17,10 +17,10 @@ import {
   Eye,
   UserPlus,
   Download,
-  MoreHorizontal
+  X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { classAPI } from '../../services/api';
+import { attendanceAPI, classAPI } from '../../services/api';
 import { toast } from 'react-hot-toast';
 
 const TeacherStudents = () => {
@@ -31,94 +31,15 @@ const TeacherStudents = () => {
   const [selectedClass, setSelectedClass] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedStudentDetails, setSelectedStudentDetails] = useState(null);
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [updatingAttendanceId, setUpdatingAttendanceId] = useState(null);
 
   const [classes, setClasses] = useState([]);
   const [classesLoading, setClassesLoading] = useState(true);
   const [classesError, setClassesError] = useState(null);
 
-  // Sample students data
-  const sampleStudents = [
-    {
-      _id: '1',
-      firstName: 'John',
-      lastName: 'Doe',
-      email: 'john.doe@student.edu',
-      studentId: 'CS2024001',
-      phone: '+1234567890',
-      department: 'Computer Science',
-      year: '2nd Year',
-      enrolledClasses: ['1', '3'],
-      attendanceStats: {
-        totalSessions: 15,
-        attendedSessions: 14,
-        attendanceRate: 93.3,
-        lastAttendance: '2024-12-08'
-      },
-      status: 'active',
-      profileImage: null,
-      address: 'Student Hostel A, Room 201'
-    },
-    {
-      _id: '2',
-      firstName: 'Jane',
-      lastName: 'Smith',
-      email: 'jane.smith@student.edu',
-      studentId: 'CS2024002',
-      phone: '+1234567891',
-      department: 'Computer Science',
-      year: '2nd Year',
-      enrolledClasses: ['1'],
-      attendanceStats: {
-        totalSessions: 8,
-        attendedSessions: 7,
-        attendanceRate: 87.5,
-        lastAttendance: '2024-12-07'
-      },
-      status: 'active',
-      profileImage: null,
-      address: 'Student Hostel B, Room 105'
-    },
-    {
-      _id: '3',
-      firstName: 'Mike',
-      lastName: 'Johnson',
-      email: 'mike.johnson@student.edu',
-      studentId: 'CHEM2024003',
-      phone: '+1234567892',
-      department: 'Chemistry',
-      year: '3rd Year',
-      enrolledClasses: ['2'],
-      attendanceStats: {
-        totalSessions: 8,
-        attendedSessions: 6,
-        attendanceRate: 75.0,
-        lastAttendance: '2024-12-06'
-      },
-      status: 'active',
-      profileImage: null,
-      address: 'Off-campus Housing'
-    },
-    {
-      _id: '4',
-      firstName: 'Sarah',
-      lastName: 'Williams',
-      email: 'sarah.williams@student.edu',
-      studentId: 'CS2024004',
-      phone: '+1234567893',
-      department: 'Computer Science',
-      year: '2nd Year',
-      enrolledClasses: ['1', '3'],
-      attendanceStats: {
-        totalSessions: 15,
-        attendedSessions: 12,
-        attendanceRate: 80.0,
-        lastAttendance: '2024-12-08'
-      },
-      status: 'inactive',
-      profileImage: null,
-      address: 'Student Hostel A, Room 305'
-    }
-  ];
+
 
   useEffect(() => {
   fetchStudents();
@@ -128,10 +49,100 @@ const TeacherStudents = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-  // TODO: Replace with real API endpoint for fetching students in a class or teacher's students.
-  // For now, keep existing behavior (sample data) until a teacher->students endpoint is added.
-  await new Promise(resolve => setTimeout(resolve, 400));
-  setStudents(sampleStudents);
+      const allStudents = [];
+      const studentMap = new Map(); // Use map to avoid duplicates (same student in multiple classes)
+
+      // Get teacher's classes first
+      const classesResponse = await classAPI.getMyClasses();
+      if (classesResponse.success) {
+        const teacherClasses = classesResponse.data.classes || classesResponse.data || [];
+        
+        // For each class, fetch class details to get assigned students
+        for (const cls of teacherClasses) {
+          try {
+            const classDetailsResponse = await classAPI.getClass(cls._id || cls.id);
+            if (classDetailsResponse.success) {
+              const classData = classDetailsResponse.data.class || classDetailsResponse.data;
+              const assignedStudents = classData.enrolledStudents || [];
+              
+              // Extract student data and add to map (avoiding duplicates)
+              for (const assignment of assignedStudents) {
+                const studentData = assignment.studentId || assignment;
+                if (studentData && studentData._id) {
+                  if (!studentMap.has(studentData._id)) {
+                    studentMap.set(studentData._id, {
+                      _id: studentData._id,
+                      firstName: studentData.firstName || '',
+                      lastName: studentData.lastName || '',
+                      email: studentData.email || '',
+                      studentId: studentData.studentId || '',
+                      phone: studentData.phoneNumber || studentData.phone || '',
+                      department: studentData.department || '',
+                      enrolledClasses: [],
+                      attendanceStats: studentData.attendanceStats || {
+                        totalSessions: 0,
+                        attendedSessions: 0,
+                        attendanceRate: 0,
+                        lastAttendance: null
+                      },
+                      status: 'active',
+                      attendanceRecords: []
+                    });
+                  }
+                  // Add this class to the student's assigned classes
+                  const student = studentMap.get(studentData._id);
+                  if (!student.enrolledClasses.includes(cls._id || cls.id)) {
+                    student.enrolledClasses.push(cls._id || cls.id);
+                  }
+                }
+              }
+            }
+          } catch (classError) {
+            console.error(`Failed to fetch details for class ${cls._id || cls.id}:`, classError);
+          }
+
+          try {
+            const classId = cls._id || cls.id;
+            const reportResponse = await attendanceAPI.getClassAttendance(classId, { limit: 100 });
+            const records = reportResponse.success
+              ? (reportResponse.data.attendanceRecords || [])
+              : [];
+
+            records.forEach(record => {
+              const studentId = String(record.studentId?._id || record.studentId?.id || record.studentId);
+              const student = studentMap.get(studentId);
+              if (!student) return;
+
+              student.attendanceRecords.push({
+                ...record,
+                classId,
+                className: cls.subject || cls.name,
+                classCode: cls.subjectCode || cls.code
+              });
+            });
+          } catch (attendanceError) {
+            console.error(`Failed to fetch attendance for class ${cls._id || cls.id}:`, attendanceError);
+          }
+        }
+      }
+
+      const mappedStudents = Array.from(studentMap.values()).map(student => {
+        const totalSessions = student.attendanceRecords.length;
+        const attendedSessions = student.attendanceRecords.filter(record => ['present', 'late'].includes(record.status)).length;
+
+        return {
+          ...student,
+          attendanceStats: {
+            ...student.attendanceStats,
+            totalSessions,
+            attendedSessions,
+            attendanceRate: totalSessions ? Math.round((attendedSessions / totalSessions) * 100) : 0,
+            lastAttendance: student.attendanceRecords[0]?.timestamp || null
+          }
+        };
+      });
+
+      setStudents(mappedStudents);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch students:', error);
@@ -170,7 +181,7 @@ const TeacherStudents = () => {
       student.studentId.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesClass = selectedClass === 'all' || 
-      student.enrolledClasses.includes(selectedClass);
+      student.enrolledClasses.some(classId => String(classId) === String(selectedClass));
 
     const matchesStatus = selectedStatus === 'all' || 
       student.status === selectedStatus;
@@ -191,11 +202,59 @@ const TeacherStudents = () => {
   };
 
   const viewStudentDetails = (student) => {
-    toast.success(`Viewing details for ${student.firstName} ${student.lastName}`);
+    setSelectedStudentDetails(student);
   };
 
   const editStudent = (student) => {
-    toast.success(`Editing ${student.firstName} ${student.lastName}`);
+    setEditingStudent(student);
+  };
+
+  const updateAttendanceStatus = async (studentId, attendanceId, status) => {
+    try {
+      setUpdatingAttendanceId(attendanceId);
+      const response = await attendanceAPI.updateAttendance(attendanceId, {
+        status,
+        notes: `Updated from manage students by ${user?.firstName || 'teacher'} ${user?.lastName || ''}`.trim()
+      });
+
+      if (!response.success) {
+        toast.error(response.message || 'Failed to update attendance');
+        return;
+      }
+
+      const applyUpdate = (student) => {
+        if (!student || String(student._id) !== String(studentId)) return student;
+
+        const attendanceRecords = student.attendanceRecords.map(record => (
+          String(record.id || record._id) === String(attendanceId)
+            ? { ...record, status }
+            : record
+        ));
+        const totalSessions = attendanceRecords.length;
+        const attendedSessions = attendanceRecords.filter(record => ['present', 'late'].includes(record.status)).length;
+
+        return {
+          ...student,
+          attendanceRecords,
+          attendanceStats: {
+            ...student.attendanceStats,
+            totalSessions,
+            attendedSessions,
+            attendanceRate: totalSessions ? Math.round((attendedSessions / totalSessions) * 100) : 0
+          }
+        };
+      };
+
+      setStudents(prev => prev.map(applyUpdate));
+      setSelectedStudentDetails(prev => applyUpdate(prev));
+      setEditingStudent(prev => applyUpdate(prev));
+      toast.success('Attendance updated');
+    } catch (error) {
+      console.error('Failed to update attendance:', error);
+      toast.error(error?.message || 'Failed to update attendance');
+    } finally {
+      setUpdatingAttendanceId(null);
+    }
   };
 
   const exportStudents = () => {
@@ -204,7 +263,7 @@ const TeacherStudents = () => {
 
   const getEnrolledClassNames = (classIds) => {
     return classIds.map(id => {
-      const cls = classes.find(c => c.id === id);
+      const cls = classes.find(c => String(c.id) === String(id));
       return cls ? cls.code : '';
     }).join(', ');
   };
@@ -226,7 +285,7 @@ const TeacherStudents = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
         <div>
           <h1 className="text-2xl font-bold text-secondary-900">Manage Students</h1>
-          <p className="text-secondary-600 mt-1">View and manage enrolled students across your classes</p>
+          <p className="text-secondary-600 mt-1">View students assigned by department and semester across your classes</p>
         </div>
         <div className="flex space-x-2">
           <button
@@ -415,7 +474,7 @@ const TeacherStudents = () => {
             <p className="text-secondary-600">
               {searchTerm || selectedClass !== 'all' || selectedStatus !== 'all'
                 ? 'Try adjusting your search or filters'
-                : 'No students are enrolled in your classes yet'}
+                : 'No students match your classes yet'}
             </p>
           </div>
         )}
@@ -431,7 +490,9 @@ const TeacherStudents = () => {
         </div>
         <div className="card p-6 text-center">
           <div className="text-3xl font-bold text-green-600 mb-2">
-            {Math.round(students.reduce((acc, s) => acc + s.attendanceStats.attendanceRate, 0) / students.length)}%
+            {students.length
+              ? Math.round(students.reduce((acc, s) => acc + s.attendanceStats.attendanceRate, 0) / students.length)
+              : 0}%
           </div>
           <div className="text-sm text-secondary-600">Average Attendance</div>
         </div>
@@ -439,11 +500,125 @@ const TeacherStudents = () => {
           <div className="text-3xl font-bold text-blue-600 mb-2">
             {students.reduce((acc, s) => acc + s.enrolledClasses.length, 0)}
           </div>
-          <div className="text-sm text-secondary-600">Total Enrollments</div>
+          <div className="text-sm text-secondary-600">Total Assignments</div>
         </div>
       </div>
+
+      {selectedStudentDetails && (
+        <StudentAttendanceModal
+          title={`${selectedStudentDetails.firstName} ${selectedStudentDetails.lastName}`}
+          student={selectedStudentDetails}
+          onClose={() => setSelectedStudentDetails(null)}
+        />
+      )}
+
+      {editingStudent && (
+        <StudentAttendanceModal
+          title={`Edit ${editingStudent.firstName} ${editingStudent.lastName}`}
+          student={editingStudent}
+          editable
+          updatingAttendanceId={updatingAttendanceId}
+          onStatusChange={updateAttendanceStatus}
+          onClose={() => setEditingStudent(null)}
+        />
+      )}
     </div>
   );
 };
+
+const StudentAttendanceModal = ({
+  title,
+  student,
+  editable = false,
+  updatingAttendanceId,
+  onStatusChange,
+  onClose
+}) => (
+  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-secondary-200">
+        <div>
+          <h3 className="text-lg font-semibold text-secondary-900">{title}</h3>
+          <p className="text-sm text-secondary-500">
+            {student.studentId} • {student.attendanceStats.attendedSessions}/{student.attendanceStats.totalSessions} sessions
+          </p>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-2 text-secondary-500 hover:text-secondary-900"
+          title="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="p-6 overflow-y-auto max-h-[70vh]">
+        {student.attendanceRecords.length === 0 ? (
+          <div className="text-center py-10 text-secondary-600">
+            No attendance records available for this student yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-secondary-200">
+              <thead className="bg-secondary-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-secondary-500 uppercase">Class</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-secondary-500 uppercase">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-secondary-500 uppercase">Status</th>
+                  {editable && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-secondary-500 uppercase">Action</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-secondary-200">
+                {student.attendanceRecords.map(record => {
+                  const attendanceId = record.id || record._id;
+
+                  return (
+                    <tr key={attendanceId}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-secondary-900">{record.className}</div>
+                        <div className="text-sm text-secondary-500">{record.classCode}</div>
+                      </td>
+                      <td className="px-4 py-3 text-secondary-600">
+                        {record.timestamp ? new Date(record.timestamp).toLocaleString() : '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          ['present', 'late'].includes(record.status)
+                            ? 'bg-green-100 text-green-700'
+                            : record.status === 'absent'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {record.status}
+                        </span>
+                      </td>
+                      {editable && (
+                        <td className="px-4 py-3">
+                          <select
+                            value={record.status}
+                            disabled={updatingAttendanceId === attendanceId}
+                            onChange={(event) => onStatusChange(student._id, attendanceId, event.target.value)}
+                            className="px-3 py-2 border border-secondary-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="present">Present</option>
+                            <option value="late">Late</option>
+                            <option value="absent">Absent</option>
+                            <option value="excused">Excused</option>
+                          </select>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 export default TeacherStudents;

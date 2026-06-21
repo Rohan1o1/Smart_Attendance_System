@@ -526,10 +526,21 @@ attendanceSchema.methods.verifyTiming = function(classStartTime, windowBefore = 
 // Static method to get attendance statistics
 attendanceSchema.statics.getStatistics = async function(filters = {}) {
   const pipeline = [];
+  const normalizedFilters = { ...filters };
+
+  ['studentId', 'classId', 'teacherId'].forEach((field) => {
+    if (
+      normalizedFilters[field] &&
+      typeof normalizedFilters[field] === 'string' &&
+      mongoose.Types.ObjectId.isValid(normalizedFilters[field])
+    ) {
+      normalizedFilters[field] = new mongoose.Types.ObjectId(normalizedFilters[field]);
+    }
+  });
   
   // Match stage
-  if (Object.keys(filters).length > 0) {
-    pipeline.push({ $match: filters });
+  if (Object.keys(normalizedFilters).length > 0) {
+    pipeline.push({ $match: normalizedFilters });
   }
   
   // Group and calculate statistics

@@ -207,7 +207,6 @@ POST   /api/classes           - Create new class
 GET    /api/classes/:id       - Get class details
 PUT    /api/classes/:id       - Update class
 DELETE /api/classes/:id       - Delete class
-POST   /api/classes/:id/enroll - Enroll in class
 POST   /api/classes/:id/start-session - Start attendance session
 POST   /api/classes/:id/end-session   - End attendance session
 ```

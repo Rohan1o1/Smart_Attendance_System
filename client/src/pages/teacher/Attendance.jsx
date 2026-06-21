@@ -19,29 +19,51 @@ import {
   Search,
   AlertTriangle,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Edit
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
-import { classAPI } from '../../services/api';
+import { attendanceAPI, classAPI } from '../../services/api';
 
 const TeacherAttendance = () => {
   const { user } = useAuth();
   const [activeSession, setActiveSession] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [selectedClass, setSelectedClass] = useState('all');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString());
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [classes, setClasses] = useState([]);
   const [classesLoading, setClassesLoading] = useState(true);
   const [classesError, setClassesError] = useState(null);
+  const [updatingAttendanceId, setUpdatingAttendanceId] = useState(null);
+
+  const getClassStudentCount = (classItem) => (
+    classItem.assignedStudentsCount ??
+    classItem.statistics?.totalStudents ??
+    (Array.isArray(classItem.enrolledStudents) ? classItem.enrolledStudents.length : classItem.enrolledStudents || 0)
+  );
+
+  const formatSessionTime = (value, fallback = '00:00') => {
+    if (!value) return fallback;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  function getLocalDateString(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
   useEffect(() => {
   fetchSessions();
   fetchClasses();
-  }, []);
+  }, [selectedDate]);
 
   const fetchSessions = async () => {
     try {
@@ -53,23 +75,47 @@ const TeacherAttendance = () => {
       const activeClasses = activeResponse.success ? (activeResponse.data.classes || activeResponse.data || []) : [];
       const myClasses = myResponse.success ? (myResponse.data.classes || myResponse.data || []) : [];
 
+      const reports = await Promise.all(myClasses.map(async (c) => {
+        const classId = c._id || c.id;
+        try {
+          const report = await attendanceAPI.getClassAttendance(classId, { limit: 100 });
+          return [String(classId), report.data || {}];
+        } catch (error) {
+          console.error(`Failed to load attendance report for class ${classId}`, error);
+          return [String(classId), null];
+        }
+      }));
+      const reportByClassId = new Map(reports);
+
       // Map classes to a session-like shape for display
-      const mapped = myClasses.map(c => ({
-        id: c._id,
-        classId: c._id,
+      const mapped = myClasses.map(c => {
+        const classId = c._id || c.id;
+        const report = reportByClassId.get(String(classId));
+        const summary = report?.summary || {};
+        const attendanceRecords = report?.attendanceRecords || [];
+        const attendees = attendanceRecords;
+        const totalStudents = summary.totalAssigned ?? getClassStudentCount(c);
+        const presentFromRecords = attendees.filter((record) => (
+          ['present', 'late'].includes(record.status)
+        )).length;
+        const presentStudents = presentFromRecords;
+
+        return {
+        id: classId,
+        classId,
         className: c.subject || c.name,
         classCode: c.subjectCode || c.code,
-        date: c.sessionDate || new Date().toISOString().split('T')[0],
-        startTime: c.sessionStartTime || (c.schedule?.startTime || '00:00'),
-        endTime: c.sessionEndTime || (c.schedule?.endTime || '00:00'),
-        status: (activeClasses.find(ac => String(ac._id) === String(c._id)) ? 'active' : (c.status || 'scheduled')),
+        date: selectedDate,
+        startTime: c.sessionStartTime ? formatSessionTime(c.sessionStartTime) : (c.schedule?.startTime || '00:00'),
+        endTime: c.sessionEndTime ? formatSessionTime(c.sessionEndTime) : (c.schedule?.endTime || '00:00'),
+        status: (activeClasses.find(ac => String(ac._id || ac.id) === String(classId)) ? 'active' : (c.status || 'scheduled')),
         location: c.classroom || c.teacherLocation?.address || 'TBA',
-        totalStudents: c.statistics?.totalStudents || (c.enrolledStudents?.length || 0),
-        presentStudents: c.statistics?.presentToday || 0,
-        absentStudents: (c.statistics?.totalStudents || c.enrolledStudents?.length || 0) - (c.statistics?.presentToday || 0),
-        attendanceRate: c.statistics?.attendanceRate || 0,
-        attendees: []
-      }));
+        totalStudents,
+        presentStudents,
+        attendanceRate: totalStudents ? Math.round((presentStudents / totalStudents) * 100) : 0,
+        attendees
+      };
+      });
 
       setSessions(mapped);
       const active = mapped.find(s => s.status === 'active');
@@ -172,14 +218,13 @@ const TeacherAttendance = () => {
           classId: returnedClass._id || returnedClass.id,
           className: returnedClass.subject || returnedClass.name || className,
           classCode: returnedClass.subjectCode || returnedClass.code || classCode,
-          date: new Date().toISOString().split('T')[0],
+          date: getLocalDateString(),
           startTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
           endTime: null,
           status: 'active',
           location: returnedClass.classroom || returnedClass.teacherLocation?.address || 'Classroom',
-          totalStudents: returnedClass.statistics?.totalStudents || (returnedClass.enrolledStudents?.length || 0),
+          totalStudents: getClassStudentCount(returnedClass),
           presentStudents: 0,
-          absentStudents: 0,
           attendanceRate: 0,
           attendees: [],
           attendanceWindow
@@ -207,6 +252,8 @@ const TeacherAttendance = () => {
         return;
       }
 
+      const response = await classAPI.endSession(session.classId);
+
       setSessions(prev => prev.map(s => 
         s.id === sessionId 
           ? { 
@@ -222,6 +269,7 @@ const TeacherAttendance = () => {
       ));
       setActiveSession(null);
       toast.success(`Session ended for ${session.className}`);
+      fetchSessions();
     } catch (error) {
       console.error('Failed to end session:', error);
       toast.error('Failed to end attendance session');
@@ -263,19 +311,59 @@ const TeacherAttendance = () => {
 
   const filteredSessions = sessions.filter(session => {
     const matchesSearch = 
-      session.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      session.classCode.toLowerCase().includes(searchTerm.toLowerCase());
+      (session.className || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (session.classCode || '').toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesClass = selectedClass === 'all' || session.classId === selectedClass;
+    const matchesClass = selectedClass === 'all' || String(session.classId) === String(selectedClass);
     const matchesDate = !selectedDate || session.date === selectedDate;
 
     return matchesSearch && matchesClass && matchesDate;
   });
 
-  const todaySessions = sessions.filter(s => s.date === new Date().toISOString().split('T')[0]);
+  const todaySessions = sessions.filter(s => s.date === getLocalDateString());
   const totalTodayStudents = todaySessions.reduce((acc, s) => acc + s.totalStudents, 0);
   const totalPresentToday = todaySessions.reduce((acc, s) => acc + s.presentStudents, 0);
   const averageAttendanceToday = totalTodayStudents > 0 ? (totalPresentToday / totalTodayStudents * 100) : 0;
+
+  const updateAttendanceStatus = async (sessionId, attendanceId, status) => {
+    try {
+      setUpdatingAttendanceId(attendanceId);
+      const response = await attendanceAPI.updateAttendance(attendanceId, {
+        status,
+        notes: `Updated by ${user?.firstName || 'teacher'} ${user?.lastName || ''}`.trim()
+      });
+
+      if (!response.success) {
+        toast.error(response.message || 'Failed to update attendance');
+        return;
+      }
+
+      setSessions(prev => prev.map(session => {
+        if (session.id !== sessionId) return session;
+
+        const attendees = session.attendees.map(record => (
+          String(record.id || record._id) === String(attendanceId)
+            ? { ...record, status }
+            : record
+        ));
+        const presentStudents = attendees.filter(record => ['present', 'late'].includes(record.status)).length;
+
+        return {
+          ...session,
+          attendees,
+          presentStudents,
+          attendanceRate: session.totalStudents ? Math.round((presentStudents / session.totalStudents) * 100) : 0
+        };
+      }));
+
+      toast.success('Attendance updated');
+    } catch (error) {
+      console.error('Failed to update attendance:', error);
+      toast.error(error?.message || 'Failed to update attendance');
+    } finally {
+      setUpdatingAttendanceId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -434,8 +522,8 @@ const TeacherAttendance = () => {
             >
               <option value="all">All Classes</option>
               {classes.map(cls => (
-                <option key={cls.id} value={cls.id}>
-                  {cls.code}
+                <option key={cls._id || cls.id} value={cls._id || cls.id}>
+                  {cls.subjectCode || cls.code}
                 </option>
               ))}
             </select>
@@ -507,7 +595,7 @@ const TeacherAttendance = () => {
                     </div>
                     <div className="flex items-center text-secondary-600">
                       <Users className="w-4 h-4 mr-2" />
-                      {session.totalStudents} students
+                      {session.presentStudents} present / {session.totalStudents} enrolled
                     </div>
                   </div>
 
@@ -527,6 +615,79 @@ const TeacherAttendance = () => {
                         <StopCircle className="w-4 h-4" />
                         <span>End Session</span>
                       </button>
+                    )}
+                  </div>
+
+                  <div className="mt-4 border-t border-secondary-200 pt-4">
+                    <h5 className="text-sm font-medium text-secondary-900 mb-3">
+                      Student Records
+                    </h5>
+                    {session.attendees.length === 0 ? (
+                      <p className="text-sm text-secondary-500">
+                        No attendance records for this date yet.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-secondary-500">
+                              <th className="py-2 pr-4 font-medium">Student</th>
+                              <th className="py-2 pr-4 font-medium">Roll</th>
+                              <th className="py-2 pr-4 font-medium">Status</th>
+                              <th className="py-2 pr-4 font-medium">Time</th>
+                              <th className="py-2 font-medium">Edit</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-secondary-100">
+                            {session.attendees.map(record => {
+                              const attendanceId = record.id || record._id;
+                              const student = record.studentId || {};
+                              const studentName = student.firstName
+                                ? `${student.firstName} ${student.lastName || ''}`.trim()
+                                : record.studentName;
+
+                              return (
+                                <tr key={attendanceId}>
+                                  <td className="py-2 pr-4 text-secondary-900">{studentName}</td>
+                                  <td className="py-2 pr-4 text-secondary-600">
+                                    {student.studentId || record.studentRollNumber || '-'}
+                                  </td>
+                                  <td className="py-2 pr-4">
+                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                                      ['present', 'late'].includes(record.status)
+                                        ? 'bg-green-100 text-green-700'
+                                        : record.status === 'absent'
+                                          ? 'bg-red-100 text-red-700'
+                                          : 'bg-yellow-100 text-yellow-700'
+                                    }`}>
+                                      {record.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 pr-4 text-secondary-600">
+                                    {record.timestamp ? new Date(record.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                  </td>
+                                  <td className="py-2">
+                                    <div className="flex items-center gap-2">
+                                      <Edit className="w-4 h-4 text-secondary-400" />
+                                      <select
+                                        value={record.status}
+                                        disabled={updatingAttendanceId === attendanceId}
+                                        onChange={(event) => updateAttendanceStatus(session.id, attendanceId, event.target.value)}
+                                        className="px-2 py-1 border border-secondary-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                      >
+                                        <option value="present">Present</option>
+                                        <option value="late">Late</option>
+                                        <option value="absent">Absent</option>
+                                        <option value="excused">Excused</option>
+                                      </select>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     )}
                   </div>
                 </div>

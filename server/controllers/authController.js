@@ -563,11 +563,16 @@ const login = async (req, res) => {
     // Update last login
     await user.updateOne({ lastLogin: new Date() });
 
+    // Sanitize user object (remove sensitive fields)
+    const userObj = user.toObject();
+    delete userObj.password;
+    delete userObj.faceEmbeddings;
+
     res.json({
       success: true,
       message: "Login successful",
       data: {
-        user,
+        user: userObj,
         accessToken: token,
         refreshToken,
       },
