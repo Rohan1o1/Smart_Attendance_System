@@ -5,7 +5,7 @@ async function checkActiveClasses() {
         console.log('🔍 Checking active classes via API...');
         
         // First, login as admin to get access token
-        const loginResponse = await axios.post('http://localhost:5001/api/auth/login', {
+        const loginResponse = await axios.post('http://localhost:5002/api/auth/login', {
             email: 'admin@college.edu',
             password: 'admin123'
         });
@@ -18,7 +18,7 @@ async function checkActiveClasses() {
         console.log('✅ Login successful, got access token');
 
         // Get active classes specifically
-        const activeClassesResponse = await axios.get('http://localhost:5001/api/class/active', {
+        const activeClassesResponse = await axios.get('http://localhost:5002/api/class/active', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -41,7 +41,7 @@ async function checkActiveClasses() {
 
         // Get teacher classes to see all classes
         try {
-            const teacherClassesResponse = await axios.get('http://localhost:5001/api/class/my-classes', {
+            const teacherClassesResponse = await axios.get('http://localhost:5002/api/class/my-classes', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

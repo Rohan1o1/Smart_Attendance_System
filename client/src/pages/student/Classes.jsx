@@ -20,7 +20,7 @@ import { toast } from 'react-hot-toast';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SLOT_MINUTES = 30;
-const SCHEDULE_START_MINUTES = 9 * 60;
+const SCHEDULE_START_MINUTES = 10 * 60 + 15;
 const SCHEDULE_END_MINUTES = 17 * 60;
 
 function toMinutes(time) {
@@ -36,10 +36,10 @@ function fromMinutes(minutes) {
 }
 
 const TIME_SLOTS = Array.from(
-  { length: (SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES },
+  { length: Math.floor((SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES) },
   (_, index) => fromMinutes(SCHEDULE_START_MINUTES + index * SLOT_MINUTES)
 );
-const BREAK_SLOTS = new Set(['12:00']);
+const BREAK_SLOTS = new Set(['13:15']);
 const DEFAULT_DURATION_MINUTES = 60;
 const colorClasses = [
   'border-blue-200 bg-blue-50 text-blue-900',

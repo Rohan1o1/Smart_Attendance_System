@@ -23,7 +23,7 @@ import { toast } from 'react-hot-toast';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SLOT_MINUTES = 30;
-const SCHEDULE_START_MINUTES = 9 * 60;
+const SCHEDULE_START_MINUTES = 10 * 60 + 15;
 const SCHEDULE_END_MINUTES = 17 * 60;
 
 function toMinutes(time) {
@@ -39,10 +39,10 @@ function fromMinutes(minutes) {
 }
 
 const TIME_SLOTS = Array.from(
-  { length: (SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES },
+  { length: Math.floor((SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES) },
   (_, index) => fromMinutes(SCHEDULE_START_MINUTES + index * SLOT_MINUTES)
 );
-const BREAK_SLOTS = new Set(['12:00']);
+const BREAK_SLOTS = new Set(['13:15']);
 const DEFAULT_DURATION_MINUTES = 60;
 const colorClasses = [
   'border-blue-200 bg-blue-50 text-blue-900',
@@ -101,7 +101,7 @@ const TeacherClasses = () => {
     setError(null);
     try {
       // Use user assignment to filter classes (department/semester/section)
-      const params = {};
+      const params = { limit: 100 };
       if (user?.department) params.department = user.department;
       if (user?.semester) params.semester = user.semester;
       if (user?.section) params.section = user.section;
@@ -116,6 +116,9 @@ const TeacherClasses = () => {
           subject: c.subject,
           subjectCode: c.subjectCode,
           department: c.department,
+          semester: c.semester,
+          year: c.year,
+          section: c.section,
           schedule: c.schedule || {},
           location: c.location || {},
           enrolledStudents: Array.isArray(c.enrolledStudents) ? c.enrolledStudents.length : (c.enrolledStudents || 0),
@@ -353,7 +356,9 @@ const TeacherClasses = () => {
                       <h3 className="text-lg font-semibold text-secondary-900 mb-1">
                         {classItem.subject}
                       </h3>
-                      <p className="text-sm text-secondary-600 mb-2">{classItem.subjectCode}</p>
+                      <p className="text-sm text-secondary-600 mb-2">
+                        {classItem.subjectCode} • Sem {classItem.semester || 'N/A'} • Sec {classItem.section || 'All'}
+                      </p>
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(classItem.status)}`}>
                         {getStatusText(classItem.status)}
                       </span>
@@ -505,10 +510,25 @@ const TeacherClasses = () => {
               const colIdx = dayIdx + 2;
               const color = subjectColorMap.get(classItem.subjectCode || classItem.subject) || colorClasses[0];
   
+              const isClickable = classItem.status === 'scheduled' || classItem.status === 'active';
               return (
                 <div
                   key={getClassId(classItem)}
-                  className={`rounded-md border p-3 text-xs shadow-sm flex flex-col justify-between ${color}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    if (classItem.status === 'scheduled') {
+                      if (window.confirm(`Start attendance session for ${classItem.subject}?`)) {
+                        startAttendanceSession(classItem._id);
+                      }
+                    } else if (classItem.status === 'active') {
+                      if (window.confirm(`End attendance session for ${classItem.subject}?`)) {
+                        endAttendanceSession(classItem._id);
+                      }
+                    }
+                  }}
+                  className={`rounded-md border p-3 text-xs shadow-sm flex flex-col justify-between transition-all duration-200 ${color} ${
+                    isClickable ? 'cursor-pointer hover:shadow-md hover:scale-[1.01]' : ''
+                  }`}
                   style={{
                     gridColumn: colIdx,
                     gridRow: `${startRow} / span ${rowSpan}`,
@@ -516,6 +536,13 @@ const TeacherClasses = () => {
                     margin: '3px',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
                   }}
+                  title={
+                    classItem.status === 'scheduled'
+                      ? 'Click to start session'
+                      : classItem.status === 'active'
+                      ? 'Click to end session'
+                      : ''
+                  }
                 >
                   <div>
                     <div className="font-bold text-sm tracking-tight leading-tight mb-1">
@@ -523,6 +550,9 @@ const TeacherClasses = () => {
                     </div>
                     <div className="text-xs font-semibold mb-1 truncate text-gray-800">
                       {classItem.subject}
+                    </div>
+                    <div className="text-[10px] text-gray-700 font-medium mb-1">
+                      Sem {classItem.semester || 'N/A'} • Sec {classItem.section || 'All'}
                     </div>
                     <div className="mt-1 font-medium truncate text-gray-700 flex items-center gap-1">
                       <Users className="w-3.5 h-3.5 inline text-gray-700" />

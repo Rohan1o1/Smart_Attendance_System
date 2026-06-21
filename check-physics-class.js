@@ -5,7 +5,7 @@ async function checkPhysicsClass() {
         console.log('🔍 Checking Physics class status...');
         
         // Login as admin
-        const loginResponse = await axios.post('http://localhost:5001/api/auth/login', {
+        const loginResponse = await axios.post('http://localhost:5002/api/auth/login', {
             email: 'admin@college.edu',
             password: 'admin123'
         });
@@ -19,7 +19,7 @@ async function checkPhysicsClass() {
 
         // Get active classes
         console.log('\n🔍 Fetching active classes...');
-        const activeResponse = await axios.get('http://localhost:5001/api/class/active', {
+        const activeResponse = await axios.get('http://localhost:5002/api/class/active', {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
@@ -61,7 +61,7 @@ async function checkPhysicsClass() {
             console.log('🔧 Let me try to activate it...');
             
             // Try to find and activate physics class via direct database query
-            const activateResponse = await axios.post('http://localhost:5001/api/direct-activate-physics', {
+            const activateResponse = await axios.post('http://localhost:5002/api/direct-activate-physics', {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

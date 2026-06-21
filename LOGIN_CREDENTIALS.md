@@ -6,7 +6,7 @@ Your Face Recognition + Location Verified Smart Attendance System is now running
 
 ### 🌐 Application URLs
 - **Frontend**: http://localhost:5174
-- **Backend API**: http://localhost:5001
+- **Backend API**: http://localhost:5002
 
 ### 🔑 Login Credentials
 
@@ -67,7 +67,7 @@ Student ID: CS2021002
 
 ## 🛠️ Technical Details
 
-### Backend (Port 5001)
+### Backend (Port 5002)
 - **Framework**: Express.js
 - **Database**: MongoDB (attendance_system)
 - **Authentication**: JWT tokens
@@ -119,7 +119,7 @@ The system uses the following key configurations:
 1. **Login Failed**: Ensure you're using the correct email and password from above
 2. **Face Recognition Not Working**: Allow camera permissions in browser
 3. **Location Issues**: Enable location services in browser settings
-4. **Server Errors**: Check if both frontend (5174) and backend (5001) are running
+4. **Server Errors**: Check if both frontend (5174) and backend (5002) are running
 
 ### Need Help?
 - Check browser console for error messages

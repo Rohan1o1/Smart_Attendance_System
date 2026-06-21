@@ -538,7 +538,7 @@ export const userAPI = {
    */
   updateFaceData: async (faceData) => {
     try {
-      const response = await apiClient.post('/face/update', faceData, {
+      const response = await apiClient.put('/face/update', faceData, {
         timeout: 60000 // 60 seconds for face processing
       });
       return handleResponse(response);

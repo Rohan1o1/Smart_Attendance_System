@@ -278,7 +278,11 @@ const Profile = () => {
     setLoading(true);
     try {
       const response = await userAPI.removeFaceData();
-      updateUser(response.data);
+      if (response.data && response.data.user) {
+        updateUser(response.data.user);
+      } else {
+        updateUser({ ...user, faceEmbeddings: [] });
+      }
       setFaceDataRegistered(false);
       
       // Refresh face status to ensure consistency

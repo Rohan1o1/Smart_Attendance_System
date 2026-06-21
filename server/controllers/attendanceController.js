@@ -401,13 +401,23 @@ const submitAttendance = async (req, res) => {
  */
 const getStudentAttendance = async (req, res) => {
   try {
-    // Accept either :studentId or legacy :id parameter
-    const studentId = req.params.studentId || req.params.id;
-    const { page = 1, limit = 10, classId, startDate, endDate, status } = req.query;
-
-    // Authorization check
+    // Authorization check details
     const requesterId = req.user._id;
     const requesterRole = req.user.role;
+    
+    console.log('getStudentAttendance debug:', {
+      requesterId: requesterId.toString(),
+      requesterRole,
+      params: req.params,
+      query: req.query
+    });
+
+    // Accept studentId from route parameter, legacy parameter, query parameter, or default to requester if student
+    let studentId = req.params.studentId || req.params.id || req.query.studentId;
+
+    if (!studentId && requesterRole === 'student') {
+      studentId = requesterId.toString();
+    }
 
     if (requesterRole === 'student' && requesterId.toString() !== studentId) {
       return res.status(403).json({
@@ -415,6 +425,15 @@ const getStudentAttendance = async (req, res) => {
         message: 'Students can only view their own attendance'
       });
     }
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID is required'
+      });
+    }
+
+    const { page = 1, limit = 10, classId, startDate, endDate, status } = req.query;
 
     // Build query
     const query = {
@@ -528,9 +547,29 @@ const getClassAttendance = async (req, res) => {
     const totalPages = Math.ceil(totalRecords / parseInt(limit));
 
     // Get enrolled students for comparison
-    const enrolledStudents = classObj.enrolledStudents.filter(
+    let enrolledStudents = classObj.enrolledStudents.filter(
       enrollment => enrollment.status === 'enrolled'
     );
+
+    if (enrolledStudents.length === 0) {
+      const studentQuery = {
+        role: 'student',
+        isActive: true,
+        verified: true,
+        department: classObj.department,
+        semester: classObj.semester
+      };
+      if (classObj.section && classObj.section !== 'All sections' && classObj.section !== '') {
+        const escapedSec = String(classObj.section).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        studentQuery.section = { $regex: new RegExp('^' + escapedSec + '$', 'i') };
+      }
+      const matchingStudents = await User.find(studentQuery);
+      enrolledStudents = matchingStudents.map(student => ({
+        studentId: student,
+        enrolledAt: classObj.createdAt,
+        status: 'enrolled'
+      }));
+    }
 
     // Calculate attendance statistics
     const stats = await Attendance.getStatistics({ classId });

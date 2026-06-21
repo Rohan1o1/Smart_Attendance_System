@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SLOT_MINUTES = 30;
-const SCHEDULE_START_MINUTES = 9 * 60;
+const SCHEDULE_START_MINUTES = 10 * 60 + 15;
 const SCHEDULE_END_MINUTES = 17 * 60;
 const ROW_HEIGHT = 48;
 const toMinutes = (time) => {
@@ -21,10 +21,10 @@ const fromMinutes = (minutes) => {
 };
 
 const TIME_SLOTS = Array.from(
-  { length: (SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES },
+  { length: Math.floor((SCHEDULE_END_MINUTES - SCHEDULE_START_MINUTES) / SLOT_MINUTES) },
   (_, index) => fromMinutes(SCHEDULE_START_MINUTES + index * SLOT_MINUTES)
 );
-const BREAK_SLOTS = new Set(['12:00']);
+const BREAK_SLOTS = new Set(['13:15']);
 const DEFAULT_DURATION_MINUTES = 60;
 const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120, 150, 180];
 const DEFAULT_YEARS = [1, 2, 3, 4];
@@ -857,8 +857,8 @@ const ClassesPage = () => {
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-gray-600">Section</span>
-                  <select name="section" value={draft.section} onChange={updateDraft} required className="input w-full">
-                    <option value="">Select section</option>
+                  <select name="section" value={draft.section} onChange={updateDraft} className="input w-full">
+                    <option value="">All sections</option>
                     {draftSections.map((section) => (
                       <option key={section} value={section}>{section}</option>
                     ))}

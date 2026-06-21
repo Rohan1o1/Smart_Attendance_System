@@ -691,11 +691,7 @@ const WebcamCapture = ({ onCapture, onClose, isOpen }) => {
             Face Recognition Capture
           </h2>
           <button
-            onClick={() => {
-              if (confirm('Are you sure you want to cancel attendance marking?')) {
-                handleClose();
-              }
-            }}
+            onClick={handleClose}
             className="text-secondary-500 hover:text-secondary-700"
             title="Cancel attendance"
           >
@@ -839,11 +835,7 @@ const WebcamCapture = ({ onCapture, onClose, isOpen }) => {
               {/* Main Controls */}
               <div key="main-controls" className="flex justify-center space-x-4">
                 <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to cancel attendance marking?')) {
-                      handleClose();
-                    }
-                  }}
+                  onClick={handleClose}
                   className="btn btn-secondary btn-md"
                 >
                   Cancel Attendance

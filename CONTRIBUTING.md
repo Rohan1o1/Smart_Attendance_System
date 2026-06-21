@@ -26,14 +26,14 @@ Create `.env` files (ask team lead for values):
 
 **Server (.env in /server folder):**
 ```
-PORT=5001
+PORT=5002
 MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret
 ```
 
 **Client (.env in /client folder):**
 ```
-VITE_API_URL=http://localhost:5001/api
+VITE_API_URL=http://localhost:5002/api
 ```
 
 ### 4. Run the Application

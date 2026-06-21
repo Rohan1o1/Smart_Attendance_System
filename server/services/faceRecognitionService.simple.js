@@ -20,6 +20,11 @@ class SimpleFaceRecognitionService {
 
   async validateImageQuality(base64Image) {
     try {
+      // Normalize base64 image if it lacks data:image prefix
+      if (base64Image && !base64Image.startsWith('data:image/')) {
+        base64Image = `data:image/jpeg;base64,${base64Image}`;
+      }
+
       // Very basic validation - just check if it's a base64 image
       if (!base64Image || !base64Image.startsWith('data:image/')) {
         return {
@@ -61,6 +66,11 @@ class SimpleFaceRecognitionService {
     try {
       console.log('🔍 Processing face embedding (simple stub)...');
       
+      // Normalize base64 image if it lacks data:image prefix
+      if (base64Image && !base64Image.startsWith('data:image/')) {
+        base64Image = `data:image/jpeg;base64,${base64Image}`;
+      }
+
       // Simple validation that it's a base64 image
       if (!base64Image || !base64Image.startsWith('data:image/')) {
         throw new Error('Invalid image format');

@@ -147,10 +147,29 @@ const getTeacherClasses = async (req, res) => {
     const totalClasses = await Class.countDocuments(query);
     const totalPages = Math.ceil(totalClasses / parseInt(limit));
 
+    const mappedClasses = await Promise.all(classes.map(async (cls) => {
+      const clsObj = cls.toObject();
+      const studentQuery = {
+        role: 'student',
+        isActive: true,
+        verified: true,
+        department: cls.department,
+        semester: cls.semester
+      };
+      if (cls.section) {
+        studentQuery.section = cls.section;
+      }
+      const count = await User.countDocuments(studentQuery);
+      if (!clsObj.enrolledStudents || clsObj.enrolledStudents.length === 0) {
+        clsObj.enrolledStudents = Array(count).fill({});
+      }
+      return clsObj;
+    }));
+
     res.json({
       success: true,
       data: {
-        classes,
+        classes: mappedClasses,
         pagination: {
           currentPage: parseInt(page),
           totalPages,
@@ -860,9 +879,29 @@ const getClassDetails = async (req, res) => {
       });
     }
 
+    const clsObj = classObj.toObject();
+    if (!clsObj.enrolledStudents || clsObj.enrolledStudents.length === 0) {
+      const studentQuery = {
+        role: 'student',
+        isActive: true,
+        verified: true,
+        department: classObj.department,
+        semester: classObj.semester
+      };
+      if (classObj.section && classObj.section !== 'All sections' && classObj.section !== '') {
+        studentQuery.section = { $regex: new RegExp('^' + escapeRegExp(classObj.section) + '$', 'i') };
+      }
+      const matchingStudents = await User.find(studentQuery).select('firstName lastName studentId email phoneNumber department semester section');
+      clsObj.enrolledStudents = matchingStudents.map(student => ({
+        studentId: student.toObject ? student.toObject() : student,
+        enrolledAt: classObj.createdAt,
+        status: 'enrolled'
+      }));
+    }
+
     res.json({
       success: true,
-      data: { class: classObj }
+      data: { class: clsObj }
     });
 
   } catch (error) {

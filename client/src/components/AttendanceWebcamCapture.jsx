@@ -532,11 +532,7 @@ const AttendanceWebcamCapture = ({ onCapture, onClose, isOpen }) => {
             </div>
           </div>
           <button
-            onClick={() => {
-              if (window.confirm('Cancel attendance marking?')) {
-                handleClose();
-              }
-            }}
+            onClick={handleClose}
             className="text-gray-400 hover:text-gray-600"
           >
             <X className="h-6 w-6" />

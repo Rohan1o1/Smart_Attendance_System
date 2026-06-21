@@ -3,7 +3,7 @@ const axios = require('axios');
 // Test both with and without trailing space
 const testLogin = async () => {
   const apiClient = axios.create({
-    baseURL: 'http://localhost:5001/api',
+    baseURL: 'http://localhost:5002/api',
     timeout: 30000,
     headers: {
       'Content-Type': 'application/json',

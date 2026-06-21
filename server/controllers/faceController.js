@@ -509,9 +509,15 @@ const deleteFaceImages = async (req, res) => {
     user.faceEmbeddings = [];
     await user.save();
 
+    // Get updated user data without sensitive information
+    const updatedUser = await User.findById(userId).select('-password -refreshToken');
+
     res.json({
       success: true,
-      message: 'All face images deleted successfully'
+      message: 'All face images deleted successfully',
+      data: {
+        user: updatedUser
+      }
     });
 
   } catch (error) {
