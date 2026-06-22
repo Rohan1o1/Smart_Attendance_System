@@ -265,6 +265,15 @@ const updateFaceImages = async (req, res) => {
         // Extract face embedding
         const embeddingResult = await faceRecognitionService.extractFaceEmbedding(base64Image);
 
+        if (!embeddingResult.success) {
+          validationErrors.push({
+            imageIndex: i + 1,
+            reason: embeddingResult.error || 'Face embedding extraction failed',
+            suggestions: embeddingResult.suggestions || ['Try again with a different image', 'Ensure good lighting and clear face visibility']
+          });
+          continue;
+        }
+
         // Save image file
         const fileName = `face_${userId}_${Date.now()}_${i + 1}.jpg`;
         const filePath = path.join(config.upload.uploadPath, 'faces', fileName);

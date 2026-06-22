@@ -24,8 +24,8 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
   // Face capture instructions for different steps
   const captureInstructions = [
     { step: 0, title: "Front View", instruction: "Look straight at the camera", icon: User },
-    { step: 1, title: "Left Profile", instruction: "Turn your head slightly to the left", icon: RotateCcw },
-    { step: 2, title: "Right Profile", instruction: "Turn your head slightly to the right", icon: RotateCcw }
+    { step: 1, title: "Slight Left", instruction: "Turn slightly left, keeping both eyes visible", icon: RotateCcw },
+    { step: 2, title: "Slight Right", instruction: "Turn slightly right, keeping both eyes visible", icon: RotateCcw }
   ];
 
   const currentInstruction = captureInstructions[captureStep] || captureInstructions[0];
@@ -116,13 +116,13 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
         setDetectedFace(result.face);
         setQualityFeedback(result.face?.feedback || []);
         
-        // Lower threshold temporarily and add manual override
         const qualityScore = result.face?.quality?.overall || 0;
-        const hasQuality = qualityScore >= 0.5; // Lower threshold from 0.7 to 0.5
+        const confidence = result.face?.confidence || 0;
         const hasFace = !!result.face;
+        const hasServerReadyFace = hasFace && qualityScore >= 0.55 && confidence >= 0.6;
         
-        console.log('Quality score:', qualityScore, 'Has face:', hasFace, 'Can capture:', hasQuality || hasFace);
-        setCanCapture(hasQuality || hasFace); // Enable if face detected, even with lower quality
+        console.log('Quality score:', qualityScore, 'Confidence:', confidence, 'Has face:', hasFace, 'Can capture:', hasServerReadyFace);
+        setCanCapture(hasServerReadyFace);
         
         // Draw detection overlay
         drawFaceOverlay(result.face);
@@ -194,8 +194,8 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
   }, []);
 
   // Capture image with enhanced quality
-  const captureImage = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !canCapture) {
+  const captureImage = useCallback(async (force = false) => {
+    if (!videoRef.current || !canvasRef.current || (!canCapture && !force)) {
       return;
     }
 
@@ -230,6 +230,7 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
           quality: detectedFace?.quality || {},
           confidence: detectedFace?.confidence || 0,
           faceBox: detectedFace?.box || null,
+          forced: force,
           deviceInfo: {
             userAgent: navigator.userAgent,
             platform: navigator.platform
@@ -261,7 +262,8 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
           step: captureStep,
           quality: detectedFace?.quality || {},
           confidence: detectedFace?.confidence || 0,
-          faceBox: detectedFace?.box || null
+          faceBox: detectedFace?.box || null,
+          forced: !canCapture
         }
       };
       
@@ -282,7 +284,7 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
     } finally {
       setLoading(false);
     }
-  }, [capturedImage, onCapture, captureStep, detectedFace]);
+  }, [capturedImage, onCapture, captureStep, detectedFace, canCapture]);
 
   // Retake image
   const retakeImage = useCallback(() => {
@@ -492,7 +494,7 @@ const EnhancedWebcamCapture = ({ onCapture, onClose, isOpen, captureStep = 0 }) 
                 {/* Force Capture Button - Always Available */}
                 {!canCapture && isStreaming && (
                   <button
-                    onClick={captureImage}
+                    onClick={() => captureImage(true)}
                     disabled={loading || !isStreaming}
                     className="flex items-center space-x-2 px-4 py-2 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50"
                   >

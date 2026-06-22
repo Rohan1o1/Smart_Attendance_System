@@ -132,6 +132,14 @@ const handleError = (error) => {
     errorResponse.errors = error.response.data.errors;
   }
 
+  if (error.response?.data?.validationErrors) {
+    errorResponse.validationErrors = error.response.data.validationErrors;
+  }
+
+  if (error.response?.data?.processedCount !== undefined) {
+    errorResponse.processedCount = error.response.data.processedCount;
+  }
+
   return errorResponse;
 };
 

@@ -14,6 +14,7 @@ class EnhancedFaceDetectionService {
     this.detectionOptions = null;
     this.realTimeDetectionActive = false;
     this.detectionInterval = null;
+    this.initializationPromise = null;
   }
 
   /**
@@ -23,6 +24,17 @@ class EnhancedFaceDetectionService {
     if (this.isInitialized) {
       return true;
     }
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = this.initializeModels();
+    const initialized = await this.initializationPromise;
+    this.initializationPromise = null;
+    return initialized;
+  }
+
+  async initializeModels() {
 
     try {
       console.log('Initializing TensorFlow.js and face detection models...');

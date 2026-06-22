@@ -17,8 +17,14 @@ class SimpleFaceDetectionTest {
       console.log('🧪 Testing TensorFlow.js initialization...');
       
       // Initialize TensorFlow.js backend properly
-      await tf.setBackend('webgl');
-      await tf.ready();
+      try {
+        await tf.setBackend('webgl');
+        await tf.ready();
+      } catch (webglError) {
+        console.warn('WebGL backend failed during test, falling back to CPU:', webglError);
+        await tf.setBackend('cpu');
+        await tf.ready();
+      }
       console.log('✅ TensorFlow.js ready, backend:', tf.getBackend());
       
       // Wait a moment for engine to be fully ready

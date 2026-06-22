@@ -188,9 +188,17 @@ const Profile = () => {
 
   const captureSteps = [
     { step: 0, title: "Front View", instruction: "Look straight at the camera" },
-    { step: 1, title: "Left Profile", instruction: "Turn your head slightly to the left" },
-    { step: 2, title: "Right Profile", instruction: "Turn your head slightly to the right" }
+    { step: 1, title: "Slight Left", instruction: "Turn slightly left, keeping both eyes visible" },
+    { step: 2, title: "Slight Right", instruction: "Turn slightly right, keeping both eyes visible" }
   ];
+
+  const getFaceCaptureErrorMessage = (error) => {
+    const firstValidationError = error?.validationErrors?.[0];
+    if (firstValidationError) {
+      return `Image ${firstValidationError.imageIndex}: ${firstValidationError.reason}`;
+    }
+    return error?.message || 'Failed to process face data';
+  };
 
   const handleFaceDataCapture = async (faceData) => {
     console.log('handleFaceDataCapture called with:', faceData); // Debug log
@@ -268,7 +276,9 @@ const Profile = () => {
       toast.success(isUpdate ? 'Face data updated successfully!' : 'Face data registered successfully!');
     } catch (error) {
       console.error('Face data operation error:', error);
-      toast.error(error.message || 'Failed to process face data');
+      setCapturedImages([]);
+      setCurrentCaptureStep(0);
+      toast.error(getFaceCaptureErrorMessage(error));
     } finally {
       setLoading(false);
     }
